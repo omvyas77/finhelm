@@ -192,3 +192,71 @@ documented above, and the two are unrelated.
 abbreviations (`cre`, `sec`, `eps`) are all substrings of common words. Switched to
 whole-token regex matching with an optional plural — whole-token alone was too strict,
 since real questions say "late fees", not "late fee".
+
+---
+
+## Day 1.9 spot-check — 15 questions
+
+Ran 15 questions across all three sources (4 filings single-hop, 2 temporal, 2 FOMC,
+3 complaints, 1 cross-source, 3 designed to be unanswerable).
+
+**Citation validity: 15/15 clean.** Zero invented source numbers — no `[S9]` when only 8
+sources existed, across every question. The numbered-source prompt is doing its job.
+
+**Abstention: 3/3 correct.** Tesla deliveries, Bitcoin price, and 2028 forward-looking NII
+all returned the `INSUFFICIENT_CONTEXT:` sentinel rather than answering from general
+knowledge. Over-refusal on answerable questions: 0/12.
+
+**Temporal handling was better than expected.** "How did JPM's CET1 ratio change between
+2024 and 2025?" retrieved only 2025 10-Qs — which looked like the classic wrong-fiscal-year
+failure until I read the answer. The 2025 10-Qs carry December 31, 2024 comparatives, so it
+correctly reconstructed the full series (15.7% → 14.8%) and attributed the decline to RWA
+growth. Retrieving the "wrong" year was right; judging retrieval by document date alone
+would have scored this as a failure.
+
+### FAILURE — router sent a two-sided question to one collection
+
+*"Do banks discuss credit card late fees differently than consumers complain about them?"*
+
+Routed to **complaints only**. The complaints vocabulary matched twice ("complain", "late
+fees"); the filings vocabulary matched zero times, because the question names its second
+side with generic words ("banks", "discuss") that are deliberately not in the term list.
+
+Two distinct defects, and the second is the dangerous one:
+
+1. **Router.** Keyword counting cannot see comparative intent.
+2. **Generation.** Given only complaint narratives, the model still produced a section
+   titled "How Banks Frame Late Fees" and asserted a "clear disconnect" — describing one
+   side of a comparison from evidence about the other side. It did not abstain, did not
+   flag the missing half, and cited 7/8 sources, so **every mechanical signal said the
+   answer was well-grounded.** Citation validity and abstention rate both looked perfect
+   on a materially wrong answer.
+
+This is the strongest argument in the project for judged faithfulness metrics rather than
+citation-counting alone, and it belongs in the Day 2 golden set as a multi-hop case.
+
+**Fixed (router half):** comparative phrasing ("differently", "versus", "compared to",
+"consistent with", ...) now overrides a one-sided keyword verdict and escalates to the LLM
+router. Verified on 6 routing cases including two that must *not* escalate. After the fix
+the same question returns a genuinely two-sided answer citing SYF's $2.7B/$2.5B late-fee
+income and the CFPB safe-harbor rule alongside the consumer narratives, 8/8 sources cited.
+
+The generation half is **not** fixed — the prompt does not require the model to check that
+it has evidence for every side of a comparison. Candidate Day 2 prompt change.
+
+### Performance bug — store reloaded on every query
+
+`load_store` was uncached while the BM25 index was cached, so every query re-read and
+re-parsed `meta.jsonl` (62 MB for complaints, 50 MB for filings). A two-collection query
+spent ~70s on disk before embedding anything. Cached: 68.5s cold → 168ms warm.
+
+Worth noting the FAISS design tradeoff this exposes: the flat index keeps a full copy of
+the corpus text in memory to serve metadata, which is exactly the cost pgvector avoids on
+Day 3.
+
+### Known measurement weakness — `uncited_sentences` over-counts
+
+The metric flags any 5+ word sentence with no `[S#]` marker, which catches markdown
+headings ("Key Disconnect") and summary transitions. Q12 scored 10 uncited sentences when
+the real number of uncited factual claims was near zero. It is a diagnostic today; it needs
+to exclude headings and non-assertive sentences before Day 4 treats it as a gate.

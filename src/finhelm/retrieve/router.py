@@ -66,9 +66,26 @@ def _score(query: str, pattern: re.Pattern) -> int:
     return len(set(pattern.findall(query.lower())))
 
 
+# A comparison needs both sides of the corpus even when only one side is named. "Do banks
+# discuss late fees differently than consumers complain about them?" matches the complaints
+# vocabulary twice and the filings vocabulary zero times, so keyword counting routes it to
+# complaints — and the model then answers "how banks discuss late fees" while citing only
+# consumer narratives. Confidently answering half a question is worse than being slow, so
+# comparative phrasing overrides a one-sided keyword verdict.
+_COMPARATIVE = re.compile(
+    r"(?<!\w)(?:versus|vs\.?|compared? (?:to|with)|differ(?:ently|ence)?s?|"
+    r"contrast|both sides|discrepan(?:cy|cies)|align|match(?:es)? up|"
+    r"consistent with|same (?:as|way))(?!\w)"
+)
+
+
 def _heuristic(query: str) -> Route | None:
     filings = _score(query, _FILINGS_RE)
     complaints = _score(query, _COMPLAINTS_RE)
+
+    if bool(filings) != bool(complaints) and _COMPARATIVE.search(query.lower()):
+        return None  # one-sided keywords but comparative intent — let the model decide
+
     if filings and complaints:
         return Route(["filings", "complaints"], "heuristic",
                      f"both vocabularies present (filings={filings}, complaints={complaints})")
