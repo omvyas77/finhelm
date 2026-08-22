@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from ..config import Config
 from ..stores import INDEX_DIR, load_store
 from ..stores.base import Hit
-from . import bm25, dense, hybrid
+from . import bm25, dense, hybrid, window
 from .rerank import rerank
 from .router import Route, route
 
@@ -36,12 +36,14 @@ STRATEGY_FALLBACKS: dict[tuple[str, str], str] = {}
 def _available(collection: str, strategy: str, retriever: str) -> bool:
     """Can this (collection, strategy) actually be served by this retriever?
 
-    The two retrievers read different artifacts, and the artifacts are not in sync:
-    BM25 builds from the chunk parquet at load time, while dense needs a FAISS index that
-    took hours to build. `filings_sentence_window` has a parquet but no index, so
-    `--retriever bm25 --chunking sentence_window` is a real, runnable ablation cell while
-    the dense arm of the same row is not. Asking the narrower question — what does *this*
-    retriever need — keeps that cell available instead of falling back on it needlessly.
+    The two retrievers read different artifacts, and the artifacts need not be in sync:
+    BM25 builds from the chunk parquet at load time, while dense needs a prebuilt FAISS
+    index. `filings_sentence_window` spent most of the ablation with a parquet and no
+    index, which made `--retriever bm25 --chunking sentence_window` a real, runnable cell
+    while the dense arm of the same row was not. Asking the narrower question — what does
+    *this* retriever need — kept that cell available instead of falling back on it
+    needlessly. (The index exists now, but the asymmetry is a property of the artifacts,
+    not of that one gap: `complaints` still has no index under any strategy but `fixed`.)
 
     Hybrid needs both, so it requires both to be present.
     """
@@ -104,6 +106,7 @@ def retrieve(
         else route(query)
     )
 
+    used = [(c, _resolve_strategy(c, cfg.chunking, cfg.retriever)) for c in decision.collections]
     per_collection = [_from_collection(query, c, cfg, filters) for c in decision.collections]
 
     # Candidates are assembled at full width first. When reranking is on, the cross-encoder
@@ -121,11 +124,14 @@ def retrieve(
         # defensible way to interleave them.
         candidates = hybrid.fuse(per_collection, cfg.top_k_retrieve, cfg.rrf_k)
 
+    # Sentence-window hits carry only the indexed sentence until here; window.expand
+    # splices their neighbours back in. It runs last, on the selected hits only, so both
+    # scorers above still see the bare sentence — see window.py.
     if cfg.rerank:
         hits, rerank_ms = rerank(query, candidates, cfg.top_k_context, cfg.rerank_model)
-        return Retrieved(hits, decision, rerank_ms)
+        return Retrieved(window.expand(hits, used), decision, rerank_ms)
 
-    return Retrieved(candidates[: cfg.top_k_context], decision)
+    return Retrieved(window.expand(candidates[: cfg.top_k_context], used), decision)
 
 
 __all__ = ["retrieve", "Retrieved", "Route", "route", "STRATEGY_FALLBACKS"]
