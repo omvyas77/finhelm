@@ -433,3 +433,40 @@ the contract worth pinning.
 
 Budgeting lesson for the remaining days: a full Ragas pass and a gate run cannot share a
 day on one free key. Run the gate against a cached judge, or keep the two on separate keys.
+
+### The judge cache could not tell two judges apart
+
+Found while checking whether tomorrow's resumed Ragas pass would safely reuse the cache.
+It would — but only because the judge has not changed. `ragas.cache._generate_cache_key`
+builds its key like this:
+
+```python
+if inspect.ismethod(func):
+    args = args[1:]          # drops `self`
+```
+
+`self` is the LLM wrapper, and the wrapper is the only thing carrying the model. So the
+key is (function qualname, prompt, kwargs) and **the model is not in it**. Two different
+judges asked an identical question hash to one entry — confirmed directly: keys for
+`gemini-3.1-flash-lite` and `gemini-3.5-flash` on the same prompt are byte-identical.
+
+This is fine for the case the cache was written for and wrong for the case this project
+keeps hitting. Three judge models were tried and rejected before the current one, and each
+of those switches would have replayed the previous judge's verdicts while
+`ragas_runner.py` wrote the *new* model's name into the output as `judge_model`. A
+mislabelled artifact is worse than a slow one — a slow run announces itself, and a number
+attributed to the wrong judge does not.
+
+Fixed by partitioning the cache directory per model (`.cache/ragas/<judge_model>/`), which
+makes a model switch a guaranteed miss and keeps each judge's entries reusable. Cruder than
+fixing the key, but it works against the library as shipped instead of depending on a
+private function's behaviour staying put.
+
+The 242 entries already on disk were migrated into the `gemini-3.1-flash-lite` namespace
+rather than discarded — they are all from that model, and they represent roughly half a
+day's quota.
+
+`tests/test_ragas_cache.py` pins both halves. The collision test asserts that the keys
+*do* collide, so that if a future ragas release starts including the model, the test fails
+and says the directory split is now redundant — rather than leaving behind a workaround
+nobody remembers the reason for.

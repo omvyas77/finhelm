@@ -15,11 +15,23 @@ the abstention pair in evals/metrics.py instead. Averaging a meaningless faithfu
 score into the headline number is how a system that refuses everything posts good Ragas
 figures.
 
-*The judge is cached on disk.* Ragas' own DiskCacheBackend keys on the actual prompt sent
-to the model, so re-scoring a run after changing one config knob is nearly free, while a
-change to a metric's prompt correctly misses the cache. Hand-rolling a key from
-(metric, question, answer, contexts) would silently serve stale scores in exactly that
-second case.
+*The judge is cached on disk, in a directory named for the judge model.* Ragas' own
+DiskCacheBackend keys on the actual prompt sent to the model, so a change to a metric's
+prompt correctly misses the cache — better than hand-rolling a key from (metric, question,
+answer, contexts), which would serve stale scores in exactly that case.
+
+But the key does *not* include the model. `ragas.cache._generate_cache_key` starts with
+`if inspect.ismethod(func): args = args[1:]`, which strips `self` — and `self` is the
+wrapper carrying the model. Two different judges asked the same question therefore collide
+on one cache entry (verified in tests/test_ragas_cache.py). Left alone, switching
+`judge_model` and re-scoring would replay the *previous* judge's verdicts while the output
+file recorded the new judge's name: a mislabelled artifact, which is worse than a slow one
+because nothing about it looks wrong.
+
+Partitioning the cache directory by model makes that switch a guaranteed miss and keeps
+each judge's entries independently reusable. This is not hypothetical — three judge models
+were tried and rejected before this one (see config.py), so the switch is a thing that
+actually happens here.
 
 *Embeddings are the local bge-small, not an API model.* ResponseRelevancy embeds
 generated questions to compare against the original. Using the same encoder the retriever
@@ -42,7 +54,17 @@ from src.finhelm import llm  # noqa: E402
 from src.finhelm.config import Config  # noqa: E402
 
 RESULTS = ROOT / "evals" / "results"
-CACHE_DIR = ROOT / ".cache" / "ragas"
+CACHE_ROOT = ROOT / ".cache" / "ragas"
+
+
+def cache_dir(judge_model: str) -> Path:
+    """Cache location for one judge, kept apart from every other judge's entries.
+
+    Partitioned because the cache key itself cannot tell two models apart — see the
+    module docstring. A directory per model is cruder than fixing the key, but it works
+    against the library as shipped rather than depending on ragas internals staying put.
+    """
+    return CACHE_ROOT / judge_model.replace("/", "_")
 
 
 def build_rows(records: list[dict]) -> tuple[list[dict], list[str]]:
@@ -97,8 +119,9 @@ def judge(cfg: Config):
     from ragas.embeddings import LangchainEmbeddingsWrapper
     from ragas.llms import LangchainLLMWrapper
 
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    cache = DiskCacheBackend(cache_dir=str(CACHE_DIR))
+    path = cache_dir(cfg.judge_model)
+    path.mkdir(parents=True, exist_ok=True)
+    cache = DiskCacheBackend(cache_dir=str(path))
 
     chat = ChatGoogleGenerativeAI(
         model=cfg.judge_model,
