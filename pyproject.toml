@@ -13,3 +13,8 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "evals"]
+markers = [
+    # Costs real generation and judge API calls. `-m "not slow"` runs only the
+    # deterministic metric tests, which is what you want while iterating locally.
+    "slow: hits live LLM APIs (the DeepEval PR gate)",
+]

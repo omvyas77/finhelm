@@ -1,0 +1,256 @@
+"""Run the golden set against a configuration and record the result.
+
+Produces three artifacts per run, deliberately kept separate:
+
+  - an MLflow run (params + metrics + per-question table) for interactive comparison;
+  - `evals/results/<run_name>.json`, the full per-question detail for failure analysis;
+  - one line appended to `evals/history.jsonl`, which is what CI reads.
+
+MLflow is for exploration and history.jsonl is the machine-readable contract. Keeping them
+separate means a broken or missing MLflow server never blocks the PR gate.
+
+Questions are evaluated sequentially, on purpose. Running them concurrently would roughly
+halve wall-clock time but makes the p50/p95 latency numbers meaningless — they would
+measure contention between eval workers rather than the latency a user would see. Latency
+is a headline number in the ablation table, so it has to be measured under the conditions
+it claims to describe.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import statistics
+import sys
+import time
+from dataclasses import asdict
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from evals import metrics as M  # noqa: E402
+from src.finhelm import llm  # noqa: E402
+from src.finhelm.config import Config  # noqa: E402
+from src.finhelm.generate import answer  # noqa: E402
+from src.finhelm.retrieve import STRATEGY_FALLBACKS, retrieve  # noqa: E402
+
+GOLDEN = ROOT / "evals" / "golden_set.jsonl"
+RESULTS = ROOT / "evals" / "results"
+HISTORY = ROOT / "evals" / "history.jsonl"
+
+
+def load_golden(path: Path = GOLDEN) -> list[dict]:
+    with path.open() as fh:
+        return [json.loads(line) for line in fh if line.strip()]
+
+
+def hit_to_dict(hit) -> dict:
+    """Flatten a Hit into what the metrics need.
+
+    doc_id and text come from metadata; chunk_id and score are kept for failure analysis
+    (which chunk won, and by how much) but are never used for scoring — see the header of
+    evals/metrics.py for why chunk_id cannot be ground truth.
+    """
+    return {
+        "chunk_id": hit.chunk_id,
+        "score": round(float(hit.score), 4),
+        "doc_id": hit.metadata.get("doc_id"),
+        "ticker": hit.metadata.get("ticker"),
+        "date": hit.metadata.get("date"),
+        "section": hit.metadata.get("section"),
+        "text": hit.metadata.get("text", ""),
+    }
+
+
+def evaluate_one(question: dict, cfg: Config, retrieve_only: bool) -> dict:
+    usage_from = len(llm.USAGE)
+    started = time.monotonic()
+
+    if retrieve_only:
+        found = retrieve(question["question"], cfg)
+        record = {
+            "answer": "",
+            "route": found.route.collections,
+            "route_reason": found.route.reason,
+            "retrieved": [hit_to_dict(h) for h in found.hits],
+            "abstained": False,
+            "retrieval_ms": int((time.monotonic() - started) * 1000),
+            "generation_ms": 0,
+        }
+    else:
+        result = answer(question["question"], cfg)
+        record = {
+            "answer": result.answer,
+            # generate.py joins collections with "+" for logging; the metric compares
+            # sets, so split it back apart rather than teaching the metric about the
+            # display format.
+            "route": result.route.split("+") if result.route else [],
+            "route_reason": result.route_reason,
+            "retrieved": [hit_to_dict(h) for h in result.retrieved],
+            "abstained": result.abstained,
+            "retrieval_ms": result.retrieval_ms,
+            "generation_ms": result.generation_ms,
+        }
+
+    record["latency_ms"] = record["retrieval_ms"] + record["generation_ms"]
+    record["cost_usd"] = llm.cost_usd(llm.USAGE[usage_from:])
+    record.update({
+        "id": question["id"],
+        "question": question["question"],
+        "type": question["type"],
+        "ground_truth": question.get("ground_truth", ""),
+        "gold_spans": question.get("gold_spans", []),
+        "expected_source": question.get("expected_source"),
+    })
+    return record
+
+
+def _percentiles(values: list[float], prefix: str) -> dict:
+    return {
+        f"p50_{prefix}_ms": statistics.median(values),
+        # quantiles() needs at least two points, and n=100 gives the 99 cut points of
+        # which index 94 is p95.
+        f"p95_{prefix}_ms": (statistics.quantiles(values, n=100)[94]
+                             if len(values) > 1 else float(values[0])),
+    }
+
+
+def summarize(records: list[dict], cfg: Config, k: int) -> dict:
+    summary = M.aggregate(records, k=k)
+    summary.update(_percentiles([r["latency_ms"] for r in records], "latency"))
+    # Reported separately from end-to-end latency because the two are not comparable
+    # across runs, and the ablation table needs the retrieval half specifically.
+    #
+    # `latency_ms` is retrieval + generation, so a --retrieve-only run and a generating
+    # run of the *same retrieval config* report wildly different p50s — measured here at
+    # 1751ms vs 7963ms. Both numbers are correct; putting them in one column is not.
+    # Without this split, a generation run silently supersedes its retrieve-only twin in
+    # the ablation table and the winning cell reads as 4.5x slower than its neighbours,
+    # which is an argument against the best config that the data does not support.
+    summary.update(_percentiles([r["retrieval_ms"] for r in records], "retrieval"))
+    summary.update({
+        "cost_usd_per_query": sum(r["cost_usd"] for r in records) / max(len(records), 1),
+        "n_questions": float(len(records)),
+    })
+    return summary
+
+
+def log_mlflow(cfg: Config, summary: dict, records: list[dict], path: Path) -> None:
+    """Log to MLflow, but never let a tracking-server problem fail the run.
+
+    The eval result is already safely on disk by the time this is called. Treating an
+    unreachable MLflow as fatal would mean losing a paid eval run to an infrastructure
+    hiccup.
+    """
+    try:
+        import mlflow
+    except ImportError:
+        print("  (mlflow not installed — skipping tracking)")
+        return
+
+    try:
+        mlflow.set_experiment("finhelm-retrieval")
+        with mlflow.start_run(run_name=cfg.run_name()):
+            mlflow.log_params(asdict(cfg))
+            mlflow.log_metrics({k: v for k, v in summary.items() if v is not None})
+            mlflow.log_artifact(str(path))
+            mlflow.log_table(
+                {
+                    "id": [r["id"] for r in records],
+                    "type": [r["type"] for r in records],
+                    "question": [r["question"] for r in records],
+                    "answer": [r["answer"] for r in records],
+                    "route": ["+".join(r["route"]) for r in records],
+                    "latency_ms": [r["latency_ms"] for r in records],
+                    "recall": [M.recall_at_k(r["retrieved"], r["gold_spans"], 5)
+                               for r in records],
+                },
+                "per_question.json",
+            )
+    except Exception as exc:  # noqa: BLE001 - tracking must never break the run
+        print(f"  (mlflow logging failed, result still saved: {exc})")
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--chunking", default="fixed",
+                    choices=["fixed", "semantic", "sentence_window"])
+    ap.add_argument("--retriever", default="dense", choices=["dense", "bm25", "hybrid"])
+    ap.add_argument("--rerank", action="store_true")
+    ap.add_argument("--k", type=int, default=5, help="k for recall@k")
+    ap.add_argument("--top-k-context", type=int, default=None)
+    ap.add_argument("--retrieve-only", action="store_true",
+                    help="skip generation; retrieval metrics only, no LLM cost")
+    ap.add_argument("--limit", type=int, default=None, help="first N questions (smoke test)")
+    ap.add_argument("--golden", default=str(GOLDEN))
+    ap.add_argument("--tag", default="", help="suffix for the run name and result file")
+    args = ap.parse_args()
+
+    overrides = {"chunking": args.chunking, "retriever": args.retriever, "rerank": args.rerank}
+    if args.top_k_context is not None:
+        overrides["top_k_context"] = args.top_k_context
+    cfg = Config(**overrides)
+
+    questions = load_golden(Path(args.golden))
+    if args.limit:
+        questions = questions[: args.limit]
+
+    run_name = cfg.run_name() + (f"-{args.tag}" if args.tag else "")
+    print(f"{run_name}: {len(questions)} questions"
+          f"{' (retrieve-only)' if args.retrieve_only else ''}")
+
+    records = []
+    for i, question in enumerate(questions, start=1):
+        record = evaluate_one(question, cfg, args.retrieve_only)
+        records.append(record)
+        recall = M.recall_at_k(record["retrieved"], record["gold_spans"], args.k)
+        flag = "-" if recall is None else f"{recall:.2f}"
+        print(f"  [{i:>3}/{len(questions)}] {record['id']} {record['type']:<12} "
+              f"recall@{args.k}={flag} {record['latency_ms']:>6}ms", flush=True)
+
+    summary = summarize(records, cfg, args.k)
+
+    # What the run actually did, which is not always what was asked for: not every
+    # collection was chunked under every strategy. Carried into the result file and
+    # history so a row of the ablation table can be read back to the corpus it ran on.
+    fallbacks = [{"collection": collection, "requested": requested, "used": used}
+                 for (collection, requested), used in STRATEGY_FALLBACKS.items()]
+
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    path = RESULTS / f"{run_name}.json"
+    path.write_text(json.dumps(
+        {"run_name": run_name, "config": asdict(cfg), "summary": summary,
+         "retrieve_only": args.retrieve_only,
+         "strategy_fallbacks": fallbacks, "records": records}, indent=2))
+
+    HISTORY.parent.mkdir(parents=True, exist_ok=True)
+    with HISTORY.open("a") as fh:
+        fh.write(json.dumps({
+            "run_name": run_name,
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "config": asdict(cfg),
+            # Recorded explicitly rather than inferred downstream from a near-zero
+            # cost_usd_per_query. Retrieve-only runs are not free — the router still makes
+            # an LLM call — so "cost is zero" was never the right test, and a threshold
+            # over cost would need re-tuning every time the router or pricing changed.
+            "retrieve_only": args.retrieve_only,
+            "strategy_fallbacks": fallbacks,
+            **{k: v for k, v in summary.items() if v is not None},
+        }) + "\n")
+
+    log_mlflow(cfg, summary, records, path)
+
+    print(f"\n{run_name}")
+    for key, value in summary.items():
+        print(f"  {key:<22} {'-' if value is None else f'{value:.4f}'}")
+
+    for fallback in fallbacks:
+        print(f"  ! {fallback['collection']} has no '{fallback['requested']}' index — "
+              f"ran as '{fallback['used']}'")
+
+    print(f"\nwrote {path}")
+
+
+if __name__ == "__main__":
+    main()

@@ -260,3 +260,176 @@ The metric flags any 5+ word sentence with no `[S#]` marker, which catches markd
 headings ("Key Disconnect") and summary transitions. Q12 scored 10 uncited sentences when
 the real number of uncited factual claims was near zero. It is a diagnostic today; it needs
 to exclude headings and non-assertive sentences before Day 4 treats it as a gate.
+
+---
+
+## Day 2
+
+### Hallucinated executive compensation with a valid citation (q055)
+
+The single most useful result of Day 2, produced by the PR gate on its first real run.
+
+Asked *"What was Jamie Dimon's total compensation for fiscal year 2025?"* — an
+`unanswerable` negative, because compensation lives in the DEF 14A proxy and the corpus
+holds 10-K/10-Q/8-K only — the system did not abstain. It answered:
+
+> Jamie Dimon's total compensation for fiscal year 2025 was **$43,000,000**, compared to
+> $39,000,000 the prior year [S2]. Base salary: $1,500,000 [S2]. Performance-based
+> variable incentive: $41,500,000, of which $5,000,000 cash and $36,500,000 in PSUs [S2].
+
+`[S2]` is the cover page of a JPM 8-K — the "emerging growth company" checkbox
+boilerplate. It contains no compensation figures at all. Every line of that itemised
+breakdown came from the model's parametric knowledge of Dimon's actual pay, not from the
+retrieved text, in direct violation of prompt rule 3 ("Do not guess, and do not answer
+from general knowledge").
+
+**Why this matters more than a typical hallucination:** it scores
+`citation_validity = 1.0`. The metric checks that `[S2]` refers to a source that was
+supplied, which it does. Nothing in the deterministic metric suite catches this. A
+dashboard built on citation validity alone would show a perfect score on a fabricated
+executive compensation figure — the highest-stakes category of number in the corpus.
+
+This is the concrete argument for judged faithfulness alongside citation counting, and it
+is why the negatives in the golden set assert abstention directly rather than being
+scored by an LLM: whether the system emitted `INSUFFICIENT_CONTEXT` is a fact, not an
+opinion.
+
+Tracked as a strict xfail in `tests/test_smoke_deepeval.py`. Candidate fixes for Day 3,
+in order of preference: require the model to quote the span supporting any figure before
+emitting it; add a document-type precondition (compensation questions require a DEF 14A
+in the context); raise `top_k_retrieve` so the abstention decision sees more evidence.
+
+### Quota exhaustion masquerading as timeouts, then as NaN
+
+Ragas judge calls against `gemini-3.5-flash` failed as `TimeoutError`, which surfaced as
+`NaN` metrics, which numpy then propagated into a `NaN` mean for the whole run. The
+underlying cause was `RESOURCE_EXHAUSTED`: tenacity retried the rate limit silently until
+the per-job timeout fired. Nothing in the output ever said "rate limited", and the
+headline number simply went blank.
+
+Three separate fixes, each addressing a different layer:
+  - judge switched to `gemini-3.1-flash-lite`, which has throughput for a full pass;
+  - `max_workers` 16 → 4, since the default concurrency was self-inflicting the 429s;
+  - aggregation now means over non-null rows and reports `n_failed` per metric, so a
+    partial failure degrades the number visibly instead of erasing it.
+
+The same bug in a different costume broke the DeepEval gate: every test passed in
+isolation and half failed when run together, because DeepEval fans a metric out into one
+judge call per extracted claim. Fixed with `async_mode=False`.
+
+### `chunk_id` is not portable across chunking strategies
+
+Ground truth was originally anchored on `chunk_id`. The same id maps to 4,566 characters
+under `fixed` and to a single "." under `semantic`. Every ablation comparison would have
+been silently mis-scored while producing entirely plausible-looking numbers. Ground truth
+is now `(doc_id, snippet)` with contiguous 10-gram matching plus a numeric-contradiction
+guard; `doc_id` is verified set-equal across all three strategies (460 docs).
+
+Bag-of-words overlap was tried first and produced 12/18 false positives on formulaic MD&A
+prose — and biased toward `sentence_window`, which has ~15x more chunks and therefore
+more chances to clear a bag-of-words threshold. That artifact would have won the chunking
+ablation on its own.
+
+### Corpus coverage does not match the ablation grid
+
+Only `filings` was chunked under all three strategies; `complaints` exists as `fixed`
+only, and `filings_sentence_window` has chunks but no FAISS index. Non-`fixed` runs
+crashed in `faiss.read_index`.
+
+Rather than erroring or silently substituting, `_resolve_strategy` falls back and
+*records* the substitution, which the runner writes into `history.jsonl` and the ablation
+table renders as a footnote. A row captioned "semantic" that quietly ran half its corpus
+as `fixed` would overstate what was compared.
+
+The fallback is also retriever-aware, which recovered a real cell: BM25 builds from the
+chunk parquet at load time and needs no FAISS index, so `sentence_window + bm25` is
+measurable today while its dense counterpart waits on a 3.5-hour index build.
+
+### A judge threshold that no retriever could ever have met
+
+The DeepEval gate failed four positives on `ContextualRelevancyMetric` at a threshold of
+0.30, with scores clustered at 0.125, 0.12 and 0.16. The cluster is the tell: real quality
+variation does not land three questions within a hair of the same number.
+
+That metric scores the *fraction* of supplied context that bears on the question. We supply
+`top_k_context=8` chunks and a typical question is answered by exactly one of them, so the
+achievable score is bounded near 1/8 = 0.125 no matter how good retrieval gets. The
+observed scores were at or above that ceiling — retrieval was doing as well as the metric
+permits, while the threshold called it a failure.
+
+The general trap: contextual relevancy is **diluted by `top_k_context`** and therefore not
+portable across context sizes. A 0.70 threshold copied from a quickstart encodes that
+quickstart's `k`. Comparing this number against a run with a different `k` is comparing two
+different metrics.
+
+Set to 0.10, documented as k-dependent, and scoped to catching "almost nothing relevant
+came back" rather than grading precision. Gate went green: 8 passed, 4 skipped, 1 xfailed.
+
+### End-to-end latency silently replacing retrieval latency in the ablation table
+
+`latency_ms` was defined as `retrieval_ms + generation_ms`. Every sweep cell was run
+`--retrieve-only`, so its p50 was pure retrieval — but the final generation run shares a
+config key with its retrieve-only twin, and the table's "widest run wins" tie-break would
+have let it take the winning cell carrying several seconds of Anthropic round-trip.
+
+Caught before it landed by noticing an existing generation run in `history.jsonl`:
+`semantic-hybrid-ragassmoke` reports p50 **7963ms** against **1751ms** for the identical
+retrieval config retrieve-only. The best row would have rendered as 4.5x slower than its
+neighbours — an argument against the winning config that the data does not support, with
+no error anywhere.
+
+Fixed by reporting `p50/p95_retrieval_ms` separately and pointing the table at those. Two
+notes on the fix:
+
+  - the runner now records `retrieve_only` explicitly rather than letting the table infer
+    it from a near-zero `cost_usd_per_query`. Retrieve-only runs are *not* free — the
+    router still makes an LLM call — so "cost is zero" was never the right test, and a
+    cost threshold would need re-tuning whenever the router or pricing changed;
+  - the legacy fallback to the combined column is gated on `retrieve_only`, because for
+    those runs `generation_ms` is 0 and the two figures are equal by construction. All 14
+    previously measured cells render byte-identical after the change, which is what makes
+    the fallback safe to keep rather than a source of quiet drift.
+
+Same shape as every other serious bug this week: a plausible number, no exception, and a
+wrong conclusion waiting for whoever read the table.
+
+### The free tier has two quotas and I had only defended against one
+
+`src/finhelm/judge.py` paces requests to stay under **15 requests/minute**, which fixed the
+DeepEval gate. The Ragas pass on the final run then died at job 74 of 128, every remaining
+job surfacing as `TimeoutError()` — the same symptom as before, so the same fix looked like
+it should apply. It did not.
+
+A single probe call gave the real answer:
+
+```
+Quota exceeded for metric: generativelanguage.googleapis.com/
+generate_content_free_tier_requests, limit: 500, model: gemini-3.1-flash-lite
+quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier
+```
+
+**500 requests per project per day.** Three DeepEval gate runs (~100 judge calls each,
+because faithfulness fans out one call per extracted claim) plus a 128-job Ragas pass
+reaches it. Pacing cannot help: the limiter's whole job is to spread requests over minutes,
+and this budget is spent over a day.
+
+The nastiest detail is that the 429 body says **"Please retry in 43.831872857s"** for the
+daily cap too. That hint is correct for the per-minute quota and actively wrong for this
+one — `_retry_after` parsed and honoured it, so the client burned all six attempts in four
+minutes and then raised "judge rate limited... lower rpm", pointing at the wrong quota.
+
+Fixed by discriminating the two, since they arrive as the same status code with the same
+hint and demand opposite responses:
+
+  - per-minute → pace and retry, as before;
+  - per-day → raise `DailyQuotaExhausted` immediately, naming the model, stating that
+    retrying cannot help before the reset, and pointing at `.cache/ragas` — because Ragas
+    keys its cache on the prompt, a resumed pass replays already-scored rows for free and
+    only pays for what failed.
+
+Covered by `tests/test_judge_quota.py`, which is string-matching by necessity: the client
+puts the quota id in the exception text rather than in a structured field, so the parser is
+the contract worth pinning.
+
+Budgeting lesson for the remaining days: a full Ragas pass and a gate run cannot share a
+day on one free key. Run the gate against a cached judge, or keep the two on separate keys.

@@ -18,4 +18,14 @@ data/index/
 
 mlruns/
 evals/results/*.json
-!evals/results/final.json
+# Per-run detail is a rebuildable artifact except for the headline run, which the README
+# and the write-up quote directly. `--tag final` produces <run_name>-final.json, so the
+# exception has to match the suffix, not a bare `final.json` that nothing ever writes.
+!evals/results/*-final.json
+!evals/results/*-final.ragas.json
+
+# Ragas keys its disk cache on the exact prompt sent to the judge, so the entries are
+# only valid for the judge model and metric prompts that produced them. Committing it
+# would hand a new checkout a cache whose keys it can hit but whose scores were produced
+# by a different judge — stale numbers that look like fresh ones.
+.cache/
