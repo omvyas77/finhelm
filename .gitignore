@@ -1,0 +1,21 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+.DS_Store
+
+# data: raw fetches and caches are rebuildable
+data/raw/
+data/processed/
+data/cache/
+!data/**/.gitkeep
+
+# Indexes are build artifacts, not source: 69 MB for filings alone, and meta.jsonl
+# carries a full copy of the corpus text. Rebuild with scripts/build_index.py.
+data/index/
+
+mlruns/
+evals/results/*.json
+!evals/results/final.json
