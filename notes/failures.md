@@ -470,3 +470,81 @@ day's quota.
 *do* collide, so that if a future ragas release starts including the model, the test fails
 and says the directory split is now redundant — rather than leaving behind a workaround
 nobody remembers the reason for.
+
+### MPS embedding throughput collapses 38x over a long encode
+
+The `filings_sentence_window` index (190,858 chunks) was budgeted at ~3.5 hours by the
+build guide and deferred for days on that basis. It actually takes **12m39s**. The gap was
+one line of missing cache management.
+
+Measured on this corpus at a fixed `batch_size=128`, in 5,000-chunk windows:
+
+    432, 465, 459, 309, 137, 12 chunks/s     <- one uninterrupted encode
+    398, 440, 442, 426, 333, 395 chunks/s    <- torch.mps.empty_cache() between windows
+
+Throughput decays as the MPS allocator's cache grows, reaching a 38x collapse by 30k
+chunks. Allocated memory stays flat at 133 MB when flushed, so this is allocator
+behaviour, not the model.
+
+The trap is the first hypothesis. Benchmarking batch sizes 128/256/512 gave 445/21/10
+chunks/s, which reads as an obvious batch-size cliff and would have been written up as
+one. It was a confound: those three runs happened in that order *in the same process*, so
+each later batch size was measured against an already-degraded allocator. Re-testing at a
+fixed batch size showed the same decay curve with no batch-size change at all. A benchmark
+whose runs share mutable process state is measuring the order, not the variable.
+
+Fixed in `src/finhelm/embeddings.py`: `_encode_all()` blocks the encode at
+`MPS_FLUSH_EVERY = 8192` and calls `torch.mps.empty_cache()` between blocks. CUDA and CPU
+take the single-call path unchanged — neither shows the decay, and blocking there would
+only add overhead and fragment the progress bar.
+
+Blocked and unblocked outputs are not bit-identical (max abs difference 2.086e-07) because
+the reduction order differs, but that is at float32 epsilon (1.19e-07); rows remain
+unit-norm and cosine ranking is unaffected.
+
+### sentence_window was scored through the entire ablation without its windows
+
+`chunking/sentence_window.py` states the design plainly — index one sentence for embedding
+precision, splice the ±3 neighbours back in so the reader sees coherent context — and
+ships an `expand()` that does it. Nothing ever called it. Not retrieval, not generation,
+not the eval harness.
+
+So every sentence_window cell in the ablation was scored on isolated sentences averaging
+213 characters, against a `fixed` row whose chunks average ~4,566. The recall metric asks
+whether a retrieved chunk contains a contiguous 10-word run of the gold span; the
+sentence_window row was answering that question with about a ninth of the text width. It
+lost, and the loss looked like a finding about chunking.
+
+Correcting it moves the row up across the board — 12 hits gained, 0 lost:
+
+    cell                        before   after
+    sentence_window-dense        0.204   0.241
+    sentence_window-hybrid       0.259   0.278
+    sentence_window-dense-rr     0.194   0.232
+    sentence_window-hybrid-rr    0.269   0.315
+    sentence_window-bm25-rr      0.269   0.296
+
+The conclusion survives — `semantic-hybrid-rr` still wins at 0.389 — but it survives on a
+fair comparison now instead of a rigged one, and the margin over sentence_window is 0.074
+rather than the 0.120 originally recorded.
+
+**The near-miss is the part worth keeping.** The first attempt at measuring the impact
+said expansion made recall *worse* (0.269 -> 0.222), which is impossible: a window
+contains its own sentence, so it can only add n-gram matches. That impossibility was the
+only reason it got a second look. The cause was in the measurement script — it keyed the
+sentence list on `doc_id`, but `chunk_doc()` runs per *(document, section)*, so for the 15
+of 460 filings carrying more than one section the sentence lists were interleaved and the
+window was sliced out of the wrong section. It produced real sentences from the real
+filing, just the wrong ones, and raised nothing. Had the sign come out merely small
+instead of negative, it would have been believed.
+
+Fixed in `src/finhelm/retrieve/window.py`, which expands *after* reranking so that both
+the bi-encoder and the cross-encoder still score the bare sentence — that precision is the
+entire reason to use this strategy. Expansion is keyed per hit, so a result set that mixes
+`filings` (sentence_window) with `complaints` (fixed fallback) needs no special casing.
+
+`tests/test_sentence_window_expansion.py` pins the section-keying bug, the
+must-not-mutate-BM25's-cached-records constraint, and the monotonicity of `is_hit` under
+expansion — the last because `_contradicts()` is a genuinely non-monotonic path (a window
+drags in neighbouring figures the lone sentence did not have), so "expansion cannot lose a
+hit" is an assumption that deserves a test rather than an argument.
