@@ -44,6 +44,38 @@ def _anthropic():
     return anthropic.Anthropic(api_key=env("ANTHROPIC_API_KEY"))
 
 
+# Per-million-token list prices, USD. Kept as data rather than folded into a hardcoded
+# cost figure so that a price change is a one-line edit and every historical run can be
+# recosted from the token counts, which are recorded exactly.
+#
+# Verify against https://www.anthropic.com/pricing before quoting these numbers anywhere
+# — the token counts below are measured, the rates are not.
+PRICING = {
+    "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
+    # Retained after the switch to Sonnet so the Day 1/2 runs that were generated with
+    # Opus can still be recosted from their recorded token counts.
+    "claude-opus-4-6": {"input": 5.00, "output": 25.00},
+    "claude-haiku-4-5-20251001": {"input": 1.00, "output": 5.00},
+}
+
+# Appended to by every call. The eval runner snapshots the length before a question and
+# sums the slice afterwards, which attributes router calls and generation calls to the
+# right question without threading a usage object through the whole call stack.
+USAGE: list[dict] = []
+
+
+def cost_usd(records: list[dict]) -> float:
+    """Cost of a slice of USAGE. Unknown models cost 0 and are reported, not guessed."""
+    total = 0.0
+    for rec in records:
+        rate = PRICING.get(rec["model"])
+        if rate is None:
+            continue
+        total += (rec["input_tokens"] * rate["input"]
+                  + rec["output_tokens"] * rate["output"]) / 1_000_000
+    return total
+
+
 def claude(
     prompt: str,
     model: str,
@@ -65,4 +97,9 @@ def claude(
     if system:
         kwargs["system"] = system
     response = _anthropic().messages.create(**kwargs)
+    USAGE.append({
+        "model": model,
+        "input_tokens": response.usage.input_tokens,
+        "output_tokens": response.usage.output_tokens,
+    })
     return "".join(block.text for block in response.content if block.type == "text")
