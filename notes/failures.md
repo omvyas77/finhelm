@@ -764,3 +764,66 @@ Four separate ways a job "started and nothing happened", all in one session:
 What works: `python -u` writing straight to a log, harness-tracked, no pipes, and progress
 verified by log growth rather than by `%cpu` — which understates MPS work badly enough to
 read as stalled.
+
+## Question design was not the problem; span count was (Day 2 audit)
+
+The hypothesis was that LLM-drafted questions were too long and compound, so that low
+recall partly measured question style rather than retrieval. The first cut supported it:
+recall by question-length tertile ran 0.556 / 0.500 / 0.194, a 2.9x spread.
+
+Controlling for question type destroyed it. *Within* each type the length effect is gone:
+multi_hop +0.000, single_hop -0.059, temporal +0.375 — the last in the wrong direction
+entirely. Length was proxying for something else.
+
+    1 gold span   n=34   recall 0.559
+    2 gold spans  n=20   recall 0.175
+
+That 3.2x gap is the whole finding. It is not about phrasing. All 20 two-span questions
+span two different documents, and 70% of them retrieve *neither* side — only 5% get both.
+
+The crowding explanation is also wrong. When one side is found, its document holds 1.00 of
+the 5 context slots, not 4 — the other slots go to documents that are neither target. A
+single query vector lands on generic vocabulary matches instead of either specific filing.
+
+Corollary for the metric: pooled recall says as much about the *mix* of question types in
+the golden set as about the retriever. Adding ten single-span questions raises "recall"
+with no code change. `recall_by_span_count` in evals/metrics.py splits it so a change that
+helps comparisons is visible even when it moves the pooled average by nothing.
+
+## Decomposition works; the instrumentation measuring it did not
+
+First agentic run reported "decomposition fired on 0/54 questions" while cost per query had
+gone from $0.0001 to $0.0007 and p50 latency from 1610ms to 3525ms. Both facts cannot be
+true. `run_eval`'s retrieve-only branch never recorded `sub_questions`, so the check was
+reading a field that is always empty — the same class of error as scoring the pool on
+doc_id and calling it span presence.
+
+Probed directly, decompose splits 8/8 multi-span questions and the splits are good: each
+names company, metric and period explicitly. It now fires on 53/54 and is recorded.
+
+Two hypotheses died here:
+  - "rerank undoes decomposition by re-scoring against the original compound question" —
+    false. agentic+rerank scores 0.225 on multi-span against agentic-no-rerank's 0.200,
+    and rerank is worth +0.157 pooled. Rerank is the single most valuable component
+    measured so far.
+  - "a wider candidate pool recovers the missing side" — false, measured earlier.
+
+## The real finding: every experiment on this golden set is underpowered
+
+Paired multi-span differences have sd 0.35 at n=20. Questions needed to resolve an effect
+with 95% confidence and 80% power:
+
+    effect 0.20 ->   25 multi-span questions
+    effect 0.15 ->   43
+    effect 0.10 ->   97
+    effect 0.05 ->  385     <- the size of every effect measured so far
+
+There are 20. Nothing measured this session — query prefix, contextual headers, pool width,
+decomposition — produced an effect larger than 0.05, and none of them could have been
+resolved if it had. The Day 2 ablation ranked 18 cells on gaps smaller than this.
+
+The actionable form: ~45 multi-span questions makes effects of 0.15+ resolvable, which is
+a realistic authoring target. Chasing 0.05 effects needs 385 and is not worth it. So the
+strategy is to stop tuning for small gains and look for a large one — the untested
+candidate being the embedding model, since bge-small-en-v1.5 has 384 dimensions to
+separate ten banks' near-identical MD&A prose.
