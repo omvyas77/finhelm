@@ -108,6 +108,24 @@ def _from_collection(query: str, collection: str, cfg: Config, filters: dict | N
     return hybrid.fuse([dense_hits, lexical], k, cfg.rrf_k)
 
 
+# Removed: per-sub-question budget allocation.
+#
+# The idea was that fusing every pool and reranking the result against the original
+# compound question discards what decomposition found, since the original names two facts
+# and the passages most similar to it are the ones moderately about both. An isolation
+# test seemed to confirm it: 7 of 40 gold spans reached a shared top-5, against 14 of 40
+# when each sub-question got a top-5 "of its own".
+#
+# That comparison was invalid. Giving each sub-question its own top-5 hands a two-way
+# split 10 slots and a four-way split 20, against 5 for the baseline. It measured context
+# budget, not query shape. Held to an equal 5-slot budget the allocation loses on every
+# tier: multi-span 0.175 vs 0.225 fused, single-span 0.471 vs 0.559, pooled 0.361 vs
+# 0.435 (paired, n=54, [-0.139, +0.009]).
+#
+# The single-span damage is the more useful half of the result. decompose splits 53 of 54
+# questions, so quota-splitting also dilutes questions that only ever needed one fact —
+# any future attempt at this has to gate on the split being warranted, not merely present.
+
 def retrieve(
     query: str,
     cfg: Config | None = None,
@@ -165,7 +183,9 @@ def retrieve(
     # splices their neighbours back in. It runs last, on the selected hits only, so both
     # scorers above still see the bare sentence — see window.py.
     # Reranking scores against the *original* question, never a sub-question: the final
-    # context has to be the passages that best answer what was actually asked.
+    # context has to be the passages that best answer what was actually asked. Giving each
+    # sub-question its own quota of the budget instead was tried and measured worse on
+    # every tier — see _allocate.
     if cfg.rerank:
         hits, rerank_ms = rerank(query, candidates, cfg.top_k_context, cfg.rerank_model)
         return Retrieved(window.expand(hits, used), decision, rerank_ms,

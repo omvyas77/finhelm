@@ -827,3 +827,40 @@ a realistic authoring target. Chasing 0.05 effects needs 385 and is not worth it
 strategy is to stop tuning for small gains and look for a large one — the untested
 candidate being the embedding model, since bge-small-en-v1.5 has 384 dimensions to
 separate ten banks' near-identical MD&A prose.
+
+## I measured a bigger context budget and called it a finding
+
+Two-span questions retrieve neither side 70% of the time. The hypothesis was that
+decomposition already finds both sides and the shared top-5 discards one, so an isolation
+test gave each sub-question "its own top-5":
+
+    gold spans found in the joint top-5                : 7/40  (17.5%)
+    gold spans found in some sub-question's own top-5  : 14/40 (35.0%)
+
+A doubling, 3.5x larger than any other effect measured. It was invalid. A two-way split
+gets 10 slots that way and a four-way split gets 20, against 5 for the baseline. The test
+varied context budget and query shape together and attributed the result to query shape.
+
+Implemented properly — round-robin quota at an equal 5-slot budget, each pool reranked
+against its own sub-question — it loses on every tier:
+
+                        all     single   multi
+    baseline          0.4167    0.5588   0.1750
+    agentic (fused)   0.4352    0.5588   0.2250
+    agentic (alloc)   0.3611    0.4706   0.1750     paired vs baseline: -0.0556 [-0.139, +0.009]
+
+Reverted. Two things worth keeping from it:
+
+  - Reranking the fused pool against the *original* question is not the mistake it looked
+    like. It beats per-sub-question reranking, and rerank remains the single most valuable
+    component measured (+0.157 pooled).
+  - decompose splits 53 of 54 questions, including single-fact ones. That is why the
+    allocation hurt single-span questions worst — it dilutes a budget across sub-questions
+    that were never needed. Any future work here has to gate on the split being warranted,
+    which is a cheaper and more promising change than anything tried today: decomposition
+    is currently paying 2.9x latency and 7x cost on every question to help a fifth of them.
+
+The pattern this repeats — verified three times this session — is that a plausible number
+with no exception attached is the most dangerous output this project produces. doc_id
+mistaken for span presence, an empty sub_questions field read as "decomposition never
+ran", and now budget mistaken for query shape. All three produced believable numbers.
