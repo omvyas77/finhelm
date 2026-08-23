@@ -282,6 +282,24 @@ def bootstrap_paired(a: Sequence[float], b: Sequence[float], rounds: int = 10000
     }
 
 
+def bootstrap_ci(values: Sequence[float], rounds: int = 10000, seed: int = 0,
+                 ) -> tuple[float, float]:
+    """95% bootstrap interval for a mean, resampling the questions themselves.
+
+    Used for the macro recall, whose sampling unit is the question rather than the gold
+    span. Wilson is wrong for it: that interval assumes a rate over independent binary
+    trials, and a per-question recall of 0.5 on a two-span question is neither binary nor
+    independent of its sibling span.
+    """
+    if not values:
+        return (0.0, 0.0)
+    rng = random.Random(seed)
+    n = len(values)
+    means = sorted(sum(values[rng.randrange(n)] for _ in range(n)) / n
+                   for _ in range(rounds))
+    return (means[int(0.025 * rounds)], means[int(0.975 * rounds)])
+
+
 def per_question_recall(records: Sequence[dict], k: int = 5,
                         threshold: float = 0.0) -> dict[str, float]:
     """Recall per question id — the aligned input bootstrap_paired needs."""
@@ -382,17 +400,36 @@ def aggregate(records: Sequence[dict], k: int = 5, threshold: float = 0.0) -> di
         vals = [v for v in values if v is not None]
         return sum(vals) / len(vals) if vals else None
 
-    # Span-level counts for the interval: recall is a rate over gold spans, so the
-    # interval must be computed on spans found / spans total, not on the mean of
-    # per-question means (which weights a 2-span question the same as a 1-span one).
+    # The interval has to describe the same quantity as the point estimate sitting next
+    # to it. `recall_at_k` below is a *macro* average — the mean of per-question recall,
+    # which weights a 2-span question the same as a 1-span one — while a Wilson interval
+    # on spans-found/spans-total describes the *micro* rate. Those differ whenever
+    # questions carry unequal span counts, and on the expanded golden set they differ
+    # enough that the macro estimate (0.406) fell outside its own reported "interval"
+    # (0.287-0.404). A number outside its own confidence interval is worse than no
+    # interval at all, because it looks authoritative.
+    #
+    # So the macro estimate gets a bootstrap over questions, which is what its sampling
+    # distribution actually is. The micro rate and its Wilson interval are still reported
+    # alongside, because the two answer different questions ("how does the system do on an
+    # average question" versus "what fraction of all evidence is retrieved") and the gap
+    # between them is itself informative about the question mix.
+    per_question = [recall_at_k(r["retrieved"], r.get("gold_spans", []), k, threshold)
+                    for r in records]
+    macro_low, macro_high = bootstrap_ci([x for x in per_question if x is not None])
+
     spans = [(g, r) for r in records for g in r.get("gold_spans", [])]
     found = sum(1 for g, r in spans if any(is_hit(c, g, threshold) for c in r["retrieved"][:k]))
-    low, high = wilson(found, len(spans))
+    micro_low, micro_high = wilson(found, len(spans))
+    low, high = macro_low, macro_high
 
     return {
         f"recall_at_{k}_ci_low": low,
         f"recall_at_{k}_ci_high": high,
         "n_gold_spans": float(len(spans)),
+        f"recall_at_{k}_micro": (found / len(spans)) if spans else None,
+        f"recall_at_{k}_micro_ci_low": micro_low,
+        f"recall_at_{k}_micro_ci_high": micro_high,
         f"recall_at_{k}": mean(
             recall_at_k(r["retrieved"], r.get("gold_spans", []), k, threshold)
             for r in records

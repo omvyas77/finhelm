@@ -53,7 +53,9 @@ def _record(spans: int, hits: int) -> dict:
     gold = [{"doc_id": f"D{i}", "snippet": f"alpha bravo charlie delta echo foxtrot golf "
                                           f"hotel india juliet {i}"} for i in range(spans)]
     retrieved = [{"doc_id": g["doc_id"], "text": g["snippet"]} for g in gold[:hits]]
-    return {"gold_spans": gold, "retrieved": retrieved}
+    # `answer` is required by aggregate() — the citation metrics read it — and run_eval
+    # always sets it, so an empty string is the faithful stand-in for a retrieve-only run.
+    return {"gold_spans": gold, "retrieved": retrieved, "answer": ""}
 
 
 def test_recall_by_span_count_separates_the_two_tiers():
@@ -78,3 +80,30 @@ def test_recall_by_span_count_ignores_questions_with_no_gold_spans():
     """Negatives must not be scored as zero-recall retrieval failures."""
     out = recall_by_span_count([{"gold_spans": [], "retrieved": []}, _record(1, 1)])
     assert out["n_single_span"] == 1.0 and "n_multi_span" not in out
+
+
+def test_bootstrap_ci_brackets_the_mean_it_describes():
+    """The regression this guards: the macro recall was reported next to a Wilson interval
+    computed on gold spans, and on the expanded golden set the point estimate (0.406) fell
+    outside its own interval (0.287-0.404). A number outside its own confidence interval
+    is worse than no interval, because it still looks authoritative."""
+    from evals.metrics import bootstrap_ci
+
+    values = [1.0] * 40 + [0.5] * 20 + [0.0] * 40
+    mean = sum(values) / len(values)
+    low, high = bootstrap_ci(values, rounds=2000)
+    assert low <= mean <= high
+
+
+def test_aggregate_reports_macro_and_micro_separately():
+    """They answer different questions and diverge whenever span counts are unequal:
+    macro is 'how does the system do on an average question', micro is 'what fraction of
+    all the evidence is retrieved'."""
+    from evals.metrics import aggregate
+
+    records = [_record(1, 1), _record(2, 0)]
+    out = aggregate(records)
+    # macro: (1.0 + 0.0) / 2 = 0.5.  micro: 1 of 3 spans found = 0.333.
+    assert out["recall_at_5"] == pytest.approx(0.5)
+    assert out["recall_at_5_micro"] == pytest.approx(1 / 3)
+    assert out["recall_at_5_ci_low"] <= out["recall_at_5"] <= out["recall_at_5_ci_high"]
