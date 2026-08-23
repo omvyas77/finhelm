@@ -864,3 +864,39 @@ The pattern this repeats — verified three times this session — is that a pla
 with no exception attached is the most dangerous output this project produces. doc_id
 mistaken for span presence, an empty sub_questions field read as "decomposition never
 ran", and now budget mistaken for query shape. All three produced believable numbers.
+
+## Gating decomposition: identical recall, half the cost and latency
+
+decompose was splitting 53 of 54 answerable questions, including single-fact ones it
+"split" into near-paraphrases. A deterministic pre-check now runs first — two issuers
+named, comparative phrasing, or two distinct periods — and only then is the model asked.
+
+    config                    all    single   multi    p50 ms   $/query
+    baseline (no agentic)   0.4167   0.5588  0.1750      1351    0.0001
+    agentic ungated         0.4352   0.5588  0.2250      3525    0.0007
+    agentic GATED           0.4352   0.5588  0.2250      1782    0.0004
+
+Paired delta against ungated is exactly 0.0000 on every tier, CI [0.0000, 0.0000]: not
+"too small to resolve" but literally the same retrieved sets. 49% faster, 49% cheaper,
+20/20 multi-span coverage retained.
+
+This is the first unambiguous win of the audit, and the reason is methodological rather
+than lucky. Recall on this golden set has a resolution floor of about 0.15; cost and
+latency have almost no variance at all. Optimising the thing you can actually measure
+beats optimising the thing you care about but cannot resolve — and here they did not
+conflict, because the question was never "does decomposition help?" but "does it need to
+run every time?"
+
+Two bugs fell out of building it, both found by tests written against the gate:
+
+  * The router's `_COMPARATIVE` pattern matched compare/compared but not *comparing*,
+    *comparison* or *contrasting*. The participle fails the trailing (?!\w) boundary and
+    the noun form was simply absent. This was never a decomposition bug — that regex also
+    forces two-collection routing, so "Comparing X with Y" was being routed one-sided.
+    Fixing it lifted gate coverage from 18/20 multi-span to 20/20.
+  * Deriving issuer aliases from company names manufactures generic finance vocabulary:
+    "Capital One" yields "capital", "Synchrony Financial" yields "financial", "American
+    Express" yields "american" and "express". "What are the bank's capital requirements?"
+    then reads as naming an issuer. Replaced with an explicit alias table plus
+    case-sensitive ticker matching, since "C" is Citigroup and also the most common lone
+    letter in a lowercased finance question. Single-span false positives halved, 15 -> 7.

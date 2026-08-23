@@ -72,10 +72,17 @@ def _score(query: str, pattern: re.Pattern) -> int:
 # complaints — and the model then answers "how banks discuss late fees" while citing only
 # consumer narratives. Confidently answering half a question is worse than being slow, so
 # comparative phrasing overrides a one-sided keyword verdict.
+# Inflections matter here and the first version dropped two of them. `compared? (?:to|with)`
+# never matched "Comparing X and Y" — the participle is not covered by the optional "d",
+# and the phrasing carries no "to"/"with" for it to anchor on. `contrast` failed the same
+# way: the trailing (?!\w) boundary rejects "contrasting" because the next character is a
+# word character. Both are among the commonest ways to phrase a comparison, and a missed
+# match here routes a two-sided question at one collection, which is the exact failure this
+# pattern exists to prevent.
 _COMPARATIVE = re.compile(
-    r"(?<!\w)(?:versus|vs\.?|compared? (?:to|with)|differ(?:ently|ence)?s?|"
-    r"contrast|both sides|discrepan(?:cy|cies)|align|match(?:es)? up|"
-    r"consistent with|same (?:as|way))(?!\w)"
+    r"(?<!\w)(?:versus|vs\.?|compar(?:e|es|ed|ing|ison|isons)(?:\s+(?:to|with))?|"
+    r"differ(?:ently|ence)?s?|contrast(?:s|ed|ing)?|both sides|discrepan(?:cy|cies)|"
+    r"align|match(?:es)? up|consistent with|same (?:as|way))(?!\w)"
 )
 
 
