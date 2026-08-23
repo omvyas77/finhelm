@@ -1001,3 +1001,59 @@ measures how much of the difficulty is concentrated in multi-span questions.
 
 A number outside its own interval is worse than reporting no interval at all, because it
 still reads as authoritative.
+
+## End-to-end on 202 questions, and the first effect the golden set could resolve
+
+Full pipeline (semantic + hybrid + rerank + gated decomposition), generation included:
+
+    macro recall@5   0.4171   CI [0.351, 0.483]      micro 0.3589
+    citation_validity 1.0000                          abstention_recall 0.9048
+    citation_density  0.8822                          over_refusal_rate 0.3646 (misleading, see below)
+    p50 latency       8.6 s                           cost $0.0172/query
+
+Failure taxonomy over the 181 answerable questions, charged to earliest cause:
+
+    correct                          71  (39%)
+    retrieval miss (abstained)       46  (25%)
+    retrieval miss (answered anyway) 42  (23%)
+    over-refusal                     14  ( 8%)
+    routing error                     6  ( 3%)
+    wrong synthesis                   2  ( 1%)
+
+**Retrieval is 48% of all questions and effectively all of the failure.** Everything
+downstream of it is in good shape: citation validity is 1.0000 across 202 questions (no
+fabricated source markers at all), synthesis is wrong on 2 of 42 checkable cases, and 19
+of 21 negatives are correctly refused.
+
+`over_refusal_rate` reads 0.3646 and again does not mean what it says: only 14 of the 87
+questions that actually held the gold span were refused. The rest are the system correctly
+declining to answer from evidence it never retrieved. That is the right behaviour and
+should not be tuned away — the abstention threshold is not the problem, recall is.
+
+Two negatives still get confident fabricated answers, q055 and q075 — the same two as
+Day 2, and q055 remains the deliberate strict xfail in the PR gate.
+
+### Contextual headers: rejected at n=74, resolved at n=248
+
+                        all      single-span   multi-span
+    plain index       0.4171       0.5439        0.2015
+    contextual index  0.4475       0.5877        0.2090
+
+    paired, all          +0.0304  [+0.0028, +0.0635]  p=0.977   <- excludes zero
+    paired, single-span  +0.0439  [+0.0000, +0.0877]  p=0.970
+    paired, multi-span   +0.0075  [-0.0224, +0.0373]  p=0.589
+
+The identical change measured +0.0185 [-0.019, +0.065] on the old 74-span set and was
+correctly recorded as unresolvable. Nothing about the change improved; the instrument did.
+This is the clearest possible argument for having spent the time on the golden set rather
+than on more tuning, and it retroactively casts doubt on the other small effects rejected
+earlier — the BGE prefix in particular is worth re-measuring at n=248.
+
+The gain is concentrated in single-span questions, which fits the mechanism: a header names
+issuer, form, period and section, so it disambiguates *which* filing a passage came from.
+It does little for multi-span, where the difficulty is needing two documents at once.
+
+Left off by default despite winning. Only `filings/semantic` and `complaints/fixed` have a
+`_ctx` index built, which covers the winning config exactly but nothing else; defaulting it
+on would make `--chunking fixed` and `--chunking sentence_window` fail on a missing index
+instead of falling back. Build the remaining `_ctx` indexes before flipping the default.
