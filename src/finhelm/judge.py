@@ -40,9 +40,18 @@ DEFAULT_RPM = 12
 MAX_ATTEMPTS = 6
 
 # The other free-tier quota, and the one pacing cannot help with: 500 generate_content
-# requests per project per day. A full Ragas pass (~128 judge jobs) plus three runs of the
-# DeepEval gate (~100 calls each) is enough to reach it, so budget the day's runs rather
-# than discovering this at 60% through a scoring pass.
+# requests per project per day.
+#
+# Budget in *calls*, not jobs — the two differ by an order of magnitude and confusing them
+# is how this cap keeps arriving as a surprise. Ragas reports 128 "jobs" for a 32-row pass
+# (32 rows x 4 metrics), but Faithfulness decomposes each answer into claims and issues a
+# verdict request per claim, exactly as DeepEval's does. One job is therefore several
+# requests, and every 429 that gets retried is several more. A single 32-row pass can
+# consume most of a day's 500 on its own.
+#
+# The corollary that cost an afternoon: a probe call returning OK proves only that at
+# least one request remained, not that there is headroom for a pass. Do not read it as
+# "the quota reset".
 DEFAULT_RPD = 500
 
 _DAILY_MESSAGE = (
@@ -157,3 +166,65 @@ def rate_limited_gemini(model: str, api_key: str, rpm: int = DEFAULT_RPM):
             ) from last
 
     return RateLimitedGeminiModel(model=model, api_key=api_key, temperature=0)
+
+
+def rate_limited_langchain_gemini(model: str, api_key: str, rpm: int = DEFAULT_RPM):
+    """The same protection for the Ragas path, which does not go through DeepEval.
+
+    `ragas_runner` wraps a LangChain chat model, so none of the pacing or the fail-fast
+    above applied to it — and that gap is why the daily cap kept presenting as a scoring
+    pass that merely got slow. Ragas hands a 429 to tenacity, tenacity backs off using the
+    "retry in ~40s" hint that is wrong for the per-day quota, the job exceeds its 300s
+    timeout mid-backoff, and the metric lands as NaN. Nothing in that chain says "quota":
+    the run reports `TimeoutError()` and keeps going, so a pass that cannot possibly
+    succeed spends another twenty minutes proving it.
+
+    Overriding `_generate`/`_agenerate` rather than wrapping, for the same reason as
+    above: ragas' LangchainLLMWrapper calls the model through the BaseChatModel interface,
+    so a duck-typed wrapper would be bypassed.
+    """
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    class RateLimitedChatGemini(ChatGoogleGenerativeAI):
+        def _generate(self, *args, **kwargs):
+            last: Exception | None = None
+            for attempt in range(MAX_ATTEMPTS):
+                _pace(rpm)
+                try:
+                    return super()._generate(*args, **kwargs)
+                except Exception as exc:  # noqa: BLE001 - re-raised below if not a 429
+                    if not _is_rate_limit(exc):
+                        raise
+                    if _is_daily_quota(exc):
+                        raise DailyQuotaExhausted(_DAILY_MESSAGE.format(model=model)) from exc
+                    last = exc
+                    time.sleep(_retry_after(exc, attempt))
+            raise RuntimeError(
+                f"judge rate limited after {MAX_ATTEMPTS} attempts; "
+                f"lower rpm (currently {rpm}) or use a paid key"
+            ) from last
+
+        async def _agenerate(self, *args, **kwargs):
+            last: Exception | None = None
+            for attempt in range(MAX_ATTEMPTS):
+                _pace(rpm)
+                try:
+                    return await super()._agenerate(*args, **kwargs)
+                except Exception as exc:  # noqa: BLE001
+                    if not _is_rate_limit(exc):
+                        raise
+                    if _is_daily_quota(exc):
+                        raise DailyQuotaExhausted(_DAILY_MESSAGE.format(model=model)) from exc
+                    last = exc
+                    time.sleep(_retry_after(exc, attempt))
+            raise RuntimeError(
+                f"judge rate limited after {MAX_ATTEMPTS} attempts; "
+                f"lower rpm (currently {rpm}) or use a paid key"
+            ) from last
+
+    # max_retries=0 because retrying is this class's job. Left at the default, LangChain
+    # silently retries underneath the pacer and multiplies the request count against a
+    # quota that is already the binding constraint.
+    return RateLimitedChatGemini(
+        model=model, google_api_key=api_key, temperature=0, max_retries=0
+    )

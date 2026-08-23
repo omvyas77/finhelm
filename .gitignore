@@ -29,3 +29,8 @@ evals/results/*.json
 # would hand a new checkout a cache whose keys it can hit but whose scores were produced
 # by a different judge — stale numbers that look like fresh ones.
 .cache/
+
+# Local MLflow tracking store (sqlite; file store is EOL as of mlflow 3)
+mlflow.db
+mlruns/
+.env.bak.*

@@ -86,3 +86,48 @@ def test_daily_quota_message_does_not_blame_rpm():
 def test_daily_quota_is_a_runtime_error():
     """Callers that only catch RuntimeError (the pre-existing behaviour) still work."""
     assert issubclass(DailyQuotaExhausted, RuntimeError)
+
+
+def test_the_ragas_path_also_fails_fast_on_the_daily_quota(monkeypatch):
+    """The gap that let the daily cap look like a slow judge for two scoring passes.
+
+    `ragas_runner` builds a LangChain chat model, not a DeepEval one, so none of the
+    protection above reached it. A per-day 429 went to tenacity, tenacity honoured the
+    misleading "retry in ~40s", and the job blew its 300s timeout mid-backoff and landed
+    as NaN. This asserts the daily error escapes as itself, immediately.
+    """
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    from src.finhelm.judge import rate_limited_langchain_gemini
+
+    def boom(self, *args, **kwargs):
+        raise Exception(PER_DAY)
+
+    monkeypatch.setattr(ChatGoogleGenerativeAI, "_generate", boom, raising=False)
+
+    chat = rate_limited_langchain_gemini("gemini-3.1-flash-lite", "not-a-real-key")
+    with pytest.raises(DailyQuotaExhausted):
+        chat.invoke("anything")
+
+
+def test_the_ragas_path_still_retries_a_per_minute_quota(monkeypatch):
+    """Failing fast must not swallow the quota that pacing *can* recover from."""
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    from src.finhelm import judge
+
+    calls = []
+
+    def flaky(self, *args, **kwargs):
+        calls.append(1)
+        raise Exception(PER_MINUTE)
+
+    monkeypatch.setattr(ChatGoogleGenerativeAI, "_generate", flaky, raising=False)
+    monkeypatch.setattr(judge, "_retry_after", lambda exc, attempt: 0.0)
+
+    chat = judge.rate_limited_langchain_gemini("gemini-3.1-flash-lite", "not-a-real-key")
+    with pytest.raises(RuntimeError) as excinfo:
+        chat.invoke("anything")
+
+    assert not isinstance(excinfo.value, DailyQuotaExhausted)
+    assert len(calls) == judge.MAX_ATTEMPTS, "a per-minute 429 must be retried, not abandoned"

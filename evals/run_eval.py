@@ -136,7 +136,8 @@ def summarize(records: list[dict], cfg: Config, k: int) -> dict:
     return summary
 
 
-def log_mlflow(cfg: Config, summary: dict, records: list[dict], path: Path) -> None:
+def log_mlflow(cfg: Config, summary: dict, records: list[dict], path: Path,
+               run_name: str) -> None:
     """Log to MLflow, but never let a tracking-server problem fail the run.
 
     The eval result is already safely on disk by the time this is called. Treating an
@@ -151,7 +152,10 @@ def log_mlflow(cfg: Config, summary: dict, records: list[dict], path: Path) -> N
 
     try:
         mlflow.set_experiment("finhelm-retrieval")
-        with mlflow.start_run(run_name=cfg.run_name()):
+        # The tagged name, matching the result file. Using cfg.run_name() here instead
+        # meant a `--tag smoke` run over 5 questions was logged under the same name as
+        # the real 75-question cell, silently sitting next to it in the experiment.
+        with mlflow.start_run(run_name=run_name):
             mlflow.log_params(asdict(cfg))
             mlflow.log_metrics({k: v for k, v in summary.items() if v is not None})
             mlflow.log_artifact(str(path))
@@ -169,7 +173,15 @@ def log_mlflow(cfg: Config, summary: dict, records: list[dict], path: Path) -> N
                 "per_question.json",
             )
     except Exception as exc:  # noqa: BLE001 - tracking must never break the run
-        print(f"  (mlflow logging failed, result still saved: {exc})")
+        # Loud, because quiet cost the entire Day 2 experiment record. MLFLOW_TRACKING_URI
+        # pointed at http://localhost:5000 with no server behind it, and on macOS port
+        # 5000 is held by Control Center's AirPlay receiver — which answers, with 403.
+        # So this did not fail like an unreachable host, it failed like a live server
+        # refusing us, one dim parenthetical per run, for all eighteen ablation cells.
+        # Every one of them was logged nowhere and nobody noticed for two days.
+        print(f"\n  !! MLFLOW LOGGING FAILED — this run is NOT tracked: {exc}")
+        print(f"  !! tracking uri: {mlflow.get_tracking_uri()}")
+        print("  !! the result file is still safe; re-attach it with scripts/backfill_mlflow.py\n")
 
 
 def main() -> None:
@@ -239,7 +251,7 @@ def main() -> None:
             **{k: v for k, v in summary.items() if v is not None},
         }) + "\n")
 
-    log_mlflow(cfg, summary, records, path)
+    log_mlflow(cfg, summary, records, path, run_name)
 
     print(f"\n{run_name}")
     for key, value in summary.items():
