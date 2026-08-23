@@ -929,3 +929,75 @@ flat CPU time is the wedge; state R with accruing CPU time is merely slow.
 
 This remains the only untested candidate for an effect large enough to clear the golden
 set's ~0.15 resolution floor.
+
+## Reviewing the 127 drafted questions
+
+Mechanical checks first, since they are cheap and rule out whole classes of problem:
+
+  * All 174 gold spans are findable in the corpus (ceiling 1.0000). Partly circular — the
+    questions were drafted *from* chunks — so this verifies the pipeline preserved the
+    spans, not that the questions are good.
+  * No lexical leakage. Question/snippet content overlap is 0.286 median against 0.321 for
+    the existing set, and long shared runs appear in 11% of spans against 18%. The drafts
+    are marginally *harder* than what they join, not easier.
+  * No dangling references to the source text, no empty ground truth, no type/span
+    mismatches, no duplicate or near-duplicate questions.
+  * **75 of the 127 ids collided with existing ids.** The drafts restart numbering at q001,
+    so q001-q075 named entirely different questions from the ones already in the set.
+    Result files are keyed by question id, so merging as-is would not have errored — it
+    would have silently rewritten the meaning of every historical per-question comparison.
+    Renumbered to q076-q202.
+
+Reading them surfaced one real validity problem: some multi-hop questions yoke two
+arbitrary facts. q081 asked how DFS defines tangible common equity *and* how AXP defines
+reserve build — unrelated metrics no analyst would pair. q083 compared "the scale of" a
+$40bn buyback against a $1.1bn FDIC accrual, which is not a comparison.
+
+Quantified by content overlap between the two gold snippets, pairs sharing under 10%:
+
+    existing golden set   9/20  (45%)
+    new drafts           25/47  (53%)
+
+So this is not a defect the drafts introduce — it is how the whole benchmark was generated,
+and it partly explains the 0.175 multi-span recall: half of those questions have no shared
+vocabulary linking the two spans, so no single query can retrieve both. Worth recording as
+a limitation of the benchmark rather than a reason to reject the drafts, which are
+consistent with what they join. Two questions carrying a trailing speculative clause the
+spans cannot support ("what does this suggest about the yield environment?") had the clause
+trimmed rather than being discarded, since their factual cores are verified.
+
+Merged: 202 questions, 248 gold spans, 67 multi-span (was 74 and 20). Ceiling stays 1.0000.
+
+## The span-count finding replicates on 3.4x the data
+
+                        n=74 spans    n=248 spans
+    single-span           0.5588         0.5439      (n 34 -> 114)
+    multi-span            0.1750         0.1716      (n 20 ->  67)
+    macro recall@5        0.4167         0.4061
+    CI width              0.213          0.117
+
+Both tiers land within 0.015 of their original values on 3.4x the questions. The 3.2x gap
+between single- and multi-span retrieval is now the best-established fact in this project.
+
+Resolvable effect size improves from ~0.15 to ~0.12, and 67 multi-span questions is past
+the 43 needed to resolve 0.15.
+
+## A point estimate outside its own confidence interval
+
+The expanded run reported recall_at_5 = 0.4061 next to a CI of [0.2865, 0.4038]. The point
+estimate sat outside its own interval, which should be impossible.
+
+The two numbers described different quantities. `recall_at_5` is a *macro* average — the
+mean of per-question recall, weighting a two-span question the same as a one-span one —
+while the Wilson interval was computed on the *micro* rate, spans-found over spans-total.
+They coincide only when every question carries the same number of spans, which was nearly
+true at n=74 and stopped being true once 47 two-span questions were merged.
+
+Fixed by giving the macro estimate a bootstrap over questions, which is its actual sampling
+distribution, and reporting the micro rate with its Wilson interval alongside. Both are
+informative — macro is "how does the system do on an average question", micro is "what
+fraction of the evidence does it retrieve" — and the gap between them (0.406 vs 0.343)
+measures how much of the difficulty is concentrated in multi-span questions.
+
+A number outside its own interval is worse than reporting no interval at all, because it
+still reads as authoritative.
