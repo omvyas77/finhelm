@@ -113,21 +113,21 @@ def build_rows(records: list[dict]) -> tuple[list[dict], list[str]]:
 
 def judge(cfg: Config):
     """The judge LLM and the embedding model, both wired to the same disk cache."""
-    from langchain_google_genai import ChatGoogleGenerativeAI
     from langchain_huggingface import HuggingFaceEmbeddings
     from ragas.cache import DiskCacheBackend
     from ragas.embeddings import LangchainEmbeddingsWrapper
     from ragas.llms import LangchainLLMWrapper
 
+    from src.finhelm.judge import rate_limited_langchain_gemini
+
     path = cache_dir(cfg.judge_model)
     path.mkdir(parents=True, exist_ok=True)
     cache = DiskCacheBackend(cache_dir=str(path))
 
-    chat = ChatGoogleGenerativeAI(
-        model=cfg.judge_model,
-        google_api_key=llm.env("GOOGLE_API_KEY"),
-        temperature=0,
-    )
+    # Paced, and it stops dead on a per-day 429 instead of retrying into a window that
+    # will not reopen until midnight. A plain ChatGoogleGenerativeAI here is what let the
+    # daily cap masquerade as a slow judge across two separate scoring passes.
+    chat = rate_limited_langchain_gemini(cfg.judge_model, llm.env("GOOGLE_API_KEY"))
     embeddings = HuggingFaceEmbeddings(model_name=cfg.embed_model)
     return (LangchainLLMWrapper(chat, cache=cache),
             LangchainEmbeddingsWrapper(embeddings, cache=cache))

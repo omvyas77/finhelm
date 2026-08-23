@@ -548,3 +548,107 @@ must-not-mutate-BM25's-cached-records constraint, and the monotonicity of `is_hi
 expansion — the last because `_contradicts()` is a genuinely non-monotonic path (a window
 drags in neighbouring figures the lone sentence did not have), so "expansion cannot lose a
 hit" is an assumption that deserves a test rather than an argument.
+
+### Failure taxonomy (2.9) — `semantic-hybrid-rr`, 54 answerable + 21 negative
+
+Produced by `scripts/failure_taxonomy.py`, which is a script and not a tally in this file
+because Day 3 exists to move these numbers. Each failure is charged to its *earliest*
+cause — routing, then retrieval, then the abstention decision, then synthesis — because
+the categories overlap and independent counts produce a table that sums past 100% and
+cannot be used to prioritise.
+
+    correct                           22  (41%)   single_hop 18, multi_hop 2, temporal 2
+    retrieval miss (abstained)        19  (35%)   single_hop 8, multi_hop 8, temporal 3
+    retrieval miss (answered anyway)  10  (19%)   single_hop 7, multi_hop 2, temporal 1
+    over-refusal                       2  (4%)    temporal 2
+    routing error                      1  (2%)    single_hop 1
+
+    hallucinated on a negative         2  (10% of 21)   q055, q075
+
+**Retrieval is the whole problem: 29 of 54, 54%.** Everything else is a rounding error
+next to it. Day 3 should spend its budget on recall — query expansion, better fusion, more
+candidates before rerank — and not on the generator or the abstention threshold.
+
+Three things this separation makes visible that the aggregate metrics hide:
+
+*`over_refusal_rate` reads 0.407 and the real figure is 2.* Twenty-two positives abstained,
+which looks like a badly-tuned abstention threshold. But 20 of those 22 abstained because
+retrieval returned nothing — that is the system declining to invent an answer, which is the
+behaviour the negatives exist to reward. Only 2 refused while actually holding the gold
+span. Tuning the threshold on the 0.407 figure would trade the system's one genuinely good
+property against a problem it does not have.
+
+*Synthesis is not a failure mode here — 0 cases.* Of the 13 answers where the gold span
+quantified something and the system both retrieved it and answered, all 13 carried at
+least one gold figure. Stated as a floor rather than a verdict, since the check is figure
+agreement and not a judge, but the direction is unambiguous: when this system has the right
+chunk, it uses it.
+
+*The 10 that answered without the gold span are the dangerous row.* They are not refusals
+and not synthesis errors; they are confident answers built on the wrong evidence, and no
+aggregate in the harness isolates them. `recall@5` counts them as misses and
+`over_refusal_rate` ignores them entirely.
+
+**Temporal is the weakest question type: 6 of 8 fail** (q047, q049, q050, q051, q053,
+q054), and 5 of those 6 are retrieval misses rather than date confusion — the comparison
+spans two filings and retrieval surfaces at most one. Multi-hop is nearly as bad: 10 of 12
+fail, again dominated by retrieval. Both are the same underlying shortfall, that a single
+query embedding cannot fetch both halves of a comparison, which is the argument for the
+Day 4 decomposition step.
+
+Counting method and its limits are documented in the script's docstring. The one worth
+repeating: `misrouted()` compares `set(expected_source) & set(route)`. An earlier ad-hoc
+version wrote `expected_source not in route`, comparing a list against list *members*, and
+reported 67 of 75 misrouted — a number that contradicted the harness's own route_accuracy
+of 0.955 and was believed for several minutes anyway.
+
+### Every MLflow run in the project was logged to macOS AirPlay
+
+Spec 2.5 is the one that "turns *I tried some things* into *I ran a controlled
+experiment*". For all of Day 2 it recorded nothing.
+
+`MLFLOW_TRACKING_URI` was `http://localhost:5000` with no MLflow server behind it. On
+macOS, port 5000 belongs to Control Center's AirPlay receiver, which is listening, and
+which answers an unknown POST with **403 Forbidden**:
+
+    $ curl -i http://localhost:5000/api/2.0/mlflow/experiments/get-by-name
+    HTTP/1.1 403 Forbidden
+    Server: AirTunes/935.7.1
+
+That is the entire reason this survived two days. A missing server gives
+`ConnectionRefusedError`, which reads as "nothing is there" and gets fixed in a minute. A
+403 reads as "the server is there and is rejecting me", which reads as an auth problem
+with something that exists — and the handler printed it as one dim parenthetical:
+
+    (mlflow logging failed, result still saved: ... error code 403 != 200)
+
+Eighteen ablation cells printed that line. It scrolled past under seventy-five lines of
+per-question progress every time.
+
+Two failures, and the second is mine rather than Apple's:
+
+*Catching the exception was right; whispering was not.* The comment on the handler says
+tracking must never fail a paid eval run, and that is correct — losing a $1.19 run to a
+telemetry hiccup would be worse. But "non-fatal" was implemented as "invisible". The
+handler is now loud, prints the resolved tracking URI, and names the recovery script.
+
+*The recovery script initially wrote to a different store than the harness.*
+`backfill_mlflow.py` did not import anything that loads `.env`, so it fell back to a stray
+`sqlite:///mlflow.db` while `run_eval.py` used the dotenv value. Two tracking stores that
+each look healthy in isolation is worse than none, because the ablation then appears to be
+*missing runs* rather than appearing to be broken. Fixed by importing the dotenv loader for
+its side effect.
+
+Nothing was lost: `evals/results/<run>.json` holds config, summary and every per-question
+record, which is a superset of what gets logged, so all 20 runs were reconstructed from
+disk rather than by re-running a sweep that cost real money. Backfilled runs are tagged
+`backfilled=true` with the result file's mtime as `ran_at`, because MLflow stamps them with
+the moment they were written and the true ordering is the part worth keeping.
+
+Two smaller things fell out of the same investigation:
+
+- MLflow 3 refuses a file store outright (`./mlruns` is "in maintenance mode"), so the
+  documented `file:` URI is no longer usable; the store is now `sqlite:///mlflow.db`.
+- `log_mlflow` named runs with `cfg.run_name()` while the result file used the `--tag`
+  suffix, so a 5-question `--tag smoke` run landed in the experiment under the *same name*
+  as the real 75-question cell. Now both use the tagged name.
