@@ -900,3 +900,32 @@ Two bugs fell out of building it, both found by tests written against the gate:
     then reads as naming an issuer. Replaced with an explicit alias table plus
     case-sensitive ticker matching, since "C" is Citigroup and also the most common lone
     letter in a lowercased finance question. Single-span false positives halved, 15 -> 7.
+
+## The embedding-model test is set up but not run (environment, not code)
+
+Index identity now includes the embedding model, so `bge-base` builds alongside `bge-small`
+rather than overwriting it — vectors from two models are not comparable, and if their
+dimensionality happened to match, loading the wrong one would return confident nonsense
+instead of raising.
+
+    FINHELM_DEVICE=cpu .venv/bin/python scripts/build_index.py \
+        --collection filings --strategy semantic --embed-model BAAI/bge-base-en-v1.5
+
+Three attempts did not finish:
+
+  * MPS, batch 128 — process alive in uninterruptible wait (state U), 2 minutes of CPU
+    over 10 minutes of wall clock.
+  * MPS, batch 64 — same, 23 seconds of CPU over 8 minutes.
+  * CPU, batch 32 — genuinely progressing (state R, CPU time accruing at ~1:1) but the
+    measured rate is 7.2 s per 32-chunk batch over 771 batches, i.e. ~85 minutes.
+
+The MPS degradation is environment state, not a code fault: the contextual-header index
+built normally on MPS earlier in the same session, and the machine only started wedging
+after several embedding processes had been killed mid-run. A fresh process on a clean GPU
+state should take 2-3 minutes. Diagnosis note for next time: `ps -Ao pid,time,stat` on the
+*python* process, not the zsh wrapper — the wrapper always reads 0:00.00 and 0MB RSS, which
+looks exactly like a dead process and led to one wrong "wedged" call here. State U with
+flat CPU time is the wedge; state R with accruing CPU time is merely slow.
+
+This remains the only untested candidate for an effect large enough to clear the golden
+set's ~0.15 resolution floor.

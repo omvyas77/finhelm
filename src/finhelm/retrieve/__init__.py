@@ -46,7 +46,7 @@ STRATEGY_FALLBACKS: dict[tuple[str, str], str] = {}
 
 
 def _available(collection: str, strategy: str, retriever: str,
-               contextual: bool = False) -> bool:
+               contextual: bool = False, embed_model: str | None = None) -> bool:
     """Can this (collection, strategy) actually be served by this retriever?
 
     The two retrievers read different artifacts, and the artifacts need not be in sync:
@@ -61,7 +61,8 @@ def _available(collection: str, strategy: str, retriever: str,
     Hybrid needs both, so it requires both to be present.
     """
     has_chunks = (bm25.PROCESSED / f"chunks_{collection}_{strategy}.parquet").exists()
-    has_index = (INDEX_DIR / index_name(collection, strategy, contextual)).exists()
+    has_index = (INDEX_DIR / index_name(collection, strategy, contextual,
+                                        embed_model)).exists()
     if retriever == "bm25":
         return has_chunks
     if retriever == "dense":
@@ -71,7 +72,7 @@ def _available(collection: str, strategy: str, retriever: str,
 
 @functools.lru_cache(maxsize=32)
 def _resolve_strategy(collection: str, strategy: str, retriever: str,
-                      contextual: bool = False) -> str:
+                      contextual: bool = False, embed_model: str | None = None) -> str:
     """Return the chunking strategy actually available for this collection.
 
     Only `filings` was chunked under all three strategies; `complaints` exists as `fixed`
@@ -85,7 +86,7 @@ def _resolve_strategy(collection: str, strategy: str, retriever: str,
     "semantic vs fixed" that quietly ran half its corpus as fixed either way would
     overstate what was compared.
     """
-    if _available(collection, strategy, retriever, contextual):
+    if _available(collection, strategy, retriever, contextual, embed_model):
         return strategy
     STRATEGY_FALLBACKS[(collection, strategy)] = FALLBACK_STRATEGY
     return FALLBACK_STRATEGY
@@ -94,12 +95,13 @@ def _resolve_strategy(collection: str, strategy: str, retriever: str,
 def _from_collection(query: str, collection: str, cfg: Config, filters: dict | None) -> list[Hit]:
     k = cfg.top_k_retrieve
     strategy = _resolve_strategy(collection, cfg.chunking, cfg.retriever,
-                                 cfg.contextual_headers)
+                                 cfg.contextual_headers, cfg.embed_model)
 
     if cfg.retriever == "bm25":
         return bm25.load_index(collection, strategy).search(query, k, filters)
 
-    store = load_store(collection, strategy, cfg.store, cfg.contextual_headers)
+    store = load_store(collection, strategy, cfg.store, cfg.contextual_headers,
+                       cfg.embed_model)
     dense_hits = dense.search(query, store, k, cfg.embed_model, filters)
     if cfg.retriever == "dense":
         return dense_hits
@@ -139,7 +141,8 @@ def retrieve(
         else route(query)
     )
 
-    used = [(c, _resolve_strategy(c, cfg.chunking, cfg.retriever, cfg.contextual_headers))
+    used = [(c, _resolve_strategy(c, cfg.chunking, cfg.retriever, cfg.contextual_headers,
+                                  cfg.embed_model))
             for c in decision.collections]
 
     # Routing happens once, on the question as asked. Sub-questions of a filings question

@@ -39,11 +39,13 @@ def main() -> None:
     ap.add_argument("--strategy", required=True,
                     choices=["fixed", "semantic", "sentence_window"])
     ap.add_argument("--batch-size", type=int, default=128)
+    ap.add_argument("--embed-model", default=None,
+                    help="override cfg.embed_model; index dir is suffixed with its name")
     ap.add_argument("--contextual", action="store_true",
                     help="prepend issuer/form/period/section before embedding")
     args = ap.parse_args()
 
-    cfg = Config()
+    cfg = Config(**({"embed_model": args.embed_model} if args.embed_model else {}))
     src = PROCESSED / f"chunks_{args.collection}_{args.strategy}.parquet"
     df = pd.read_parquet(src)
     print(f"{src.name}: {len(df)} chunks | device={pick_device()}")
@@ -65,7 +67,8 @@ def main() -> None:
     metadata = df[[c for c in META_FIELDS if c in df.columns]].to_dict("records")
     store.upsert(df["chunk_id"].tolist(), vectors, metadata)
 
-    out = INDEX_DIR / index_name(args.collection, args.strategy, args.contextual)
+    out = INDEX_DIR / index_name(args.collection, args.strategy, args.contextual,
+                                 cfg.embed_model)
     store.save(out)
     size_mb = sum(f.stat().st_size for f in out.iterdir()) / 1e6
     print(f"saved {store.count()} vectors -> {out} ({size_mb:.1f} MB)")
