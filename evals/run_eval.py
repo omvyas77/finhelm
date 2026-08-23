@@ -77,6 +77,11 @@ def evaluate_one(question: dict, cfg: Config, retrieve_only: bool) -> dict:
             "abstained": False,
             "retrieval_ms": int((time.monotonic() - started) * 1000),
             "generation_ms": 0,
+            # Recorded because "did decomposition actually fire?" is otherwise
+            # unanswerable from the artifact. The first attempt to measure agentic mode
+            # read this field, found it absent, and concluded decomposition never ran —
+            # while cost per query had risen 7x proving it had.
+            "sub_questions": list(found.sub_questions),
             # The pre-rerank candidate pool, in rank order, as ids only — carrying its
             # text would add ~9 MB per result file.
             #

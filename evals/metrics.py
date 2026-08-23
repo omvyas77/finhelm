@@ -336,6 +336,40 @@ def route_accuracy(records: Iterable[dict]) -> float | None:
     return hits / len(scored)
 
 
+def recall_by_span_count(records: Sequence[dict], k: int = 5,
+                         threshold: float = 0.0) -> dict:
+    """Recall split by how many gold spans a question needs.
+
+    This is the difficulty axis that actually matters, and reporting one pooled number
+    hides it completely. Measured on the Day 2 set: questions needing one span score
+    0.559, questions needing two score 0.175 — and 70% of the two-span questions retrieve
+    *neither* side, not one of the two.
+
+    The pooled figure therefore says more about the mix of question types in the golden
+    set than about the retriever: add ten single-span questions and "recall" rises with
+    no code change. Splitting it means a change that helps comparisons can be seen doing
+    so even when it moves the pooled average by nothing.
+
+    Note this is not the same cut as question `type`. Multi-hop questions carry two spans
+    by construction, but so do most temporal ones, and single_hop questions occasionally
+    do too — the span count is the property that predicts the score.
+    """
+    out: dict[str, float] = {}
+    groups: dict[int, list[dict]] = {}
+    for r in records:
+        spans = r.get("gold_spans") or []
+        if spans:
+            groups.setdefault(min(len(spans), 2), []).append(r)
+    for count, group in sorted(groups.items()):
+        label = "single_span" if count == 1 else "multi_span"
+        scores = [recall_at_k(r["retrieved"], r["gold_spans"], k, threshold) for r in group]
+        scores = [x for x in scores if x is not None]
+        if scores:
+            out[f"recall_at_{k}_{label}"] = sum(scores) / len(scores)
+            out[f"n_{label}"] = float(len(scores))
+    return out
+
+
 def aggregate(records: Sequence[dict], k: int = 5, threshold: float = 0.0) -> dict:
     """Roll per-question records up into the metric row logged to MLflow.
 
@@ -370,5 +404,6 @@ def aggregate(records: Sequence[dict], k: int = 5, threshold: float = 0.0) -> di
         "citation_density": mean(citation_density(r["answer"]) for r in records),
         "uncited_claims": mean(float(uncited_claims(r["answer"])) for r in records),
         "route_accuracy": route_accuracy(records),
+        **recall_by_span_count(records, k, threshold),
         **abstention(records),
     }
