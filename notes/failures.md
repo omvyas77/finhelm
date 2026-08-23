@@ -652,3 +652,115 @@ Two smaller things fell out of the same investigation:
 - `log_mlflow` named runs with `cfg.run_name()` while the result file used the `--tag`
   suffix, so a 5-question `--tag smoke` run landed in the experiment under the *same name*
   as the real 75-question cell. Now both use the tagged name.
+
+## Day 2.5: three predicted wins that the data refused to confirm
+
+The Day 2 post-mortem produced a plan with a ranked set of fixes. Measuring them changed
+the ranking, and in two cases inverted it. Recording the predictions next to the outcomes,
+because the pattern — plausible mechanism, measurable, and wrong — is the point.
+
+### Prediction 1: "pool starvation is the dominant lever". Wrong.
+
+Instrumenting the pre-rerank candidate pool showed pool recall of 0.4459 at
+`top_k_retrieve=20`, rising to 0.6351 at 100 and 0.7432 at 200, against a final recall@5
+of 0.389. The pipeline after the pool was losing only ~0.06, so widening it looked like
+the obvious win and the plan led with it.
+
+Sweeping it measured:
+
+    k=20   recall@5 0.4167   p50 1351 ms
+    k=50   recall@5 0.3981   p50 3563 ms
+    k=100  recall@5 0.4352   p50 9694 ms
+
+None of the pairwise differences is distinguishable (paired bootstrap over 54 questions,
+every interval spanning 0), and k=50 is nominally *worse* than k=20. Latency grows 7x.
+
+The pool was never the binding constraint. Feeding the cross-encoder three to five times
+more candidates hands it more distractors and it does not find more gold. The position
+data says why: when reranking works it puts the gold chunk at **rank 1** (14 of 27 hits at
+k=20), and recall@8 is barely above recall@5 (0.365 vs 0.351). The reranker is not nearly
+right and short of context — it is binary. Either it recognises the passage or it does not,
+and pool width does not change which.
+
+Corollary worth keeping: **pool recall is a ceiling, not a forecast.** It bounds what the
+selector could retrieve, and says nothing about what it will.
+
+### Prediction 2: "contextual headers are the highest expected value change". Not shown.
+
+Chunks carry no issuer, form, period or section, and 48% of missed spans came from a
+document retrieval had already surfaced — so prepending that metadata before embedding
+should separate near-identical filings. Both indexes were built (`*_ctx`, kept beside the
+originals so the comparison stays an A/B rather than a one-way door).
+
+    plain        recall@5 0.4167   mrr 0.3293   p50 1351 ms
+    contextual   recall@5 0.4352   mrr 0.3744   p50 1809 ms
+
+    paired bootstrap: +0.0185, 95% CI [-0.0185, +0.0648], P(better) 0.709
+    2 questions gained, 1 lost
+
+Not distinguishable. MRR moved more than recall, which is consistent with headers helping
+rank an already-retrieved passage rather than retrieving a new one — but on 54 questions
+that reading is a hypothesis, not a result. Kept off by default; the flag and the index
+both survive so it can be re-tested on a larger set.
+
+### Prediction 3: "the BGE query prefix is minor". Also wrong, in the other direction.
+
+`bge-small-en-v1.5` is trained asymmetrically and `encode()` embedded queries exactly like
+passages for all of Day 2. Dismissed in the plan as worth "~3 spans". Measured at the same
+config, prefix off vs on: 0.3889 -> 0.4167, +0.0278, 95% CI [+0.0000, +0.0741], 2 gained,
+**0 lost**.
+
+Still not distinguishable at this sample size — but it is the same magnitude as the two
+changes that were predicted to be large, it never loses a question, and it costs nothing.
+The ranking of "big" and "small" fixes was not supported by any measurement when it was
+written.
+
+### The finding underneath all three
+
+Every change measured this session lands between +0.018 and +0.028 with a 95% interval
+spanning roughly +/-0.06. That is not a coincidence about the changes; it is the resolution
+limit of a golden set with 74 gold spans. At p ~ 0.4 the Wilson interval on the headline
+number is [0.252, 0.465] — wide enough to contain the top six rows of the Day 2 ablation.
+
+**The 18-cell ablation could not distinguish its own top six configurations**, and neither
+can any of this work. Reporting a winner from it was over-claiming.
+
+Both are now reported rather than left implicit: `wilson()` and `bootstrap_paired()` in
+`evals/metrics.py`, a CI column in the ablation table, and `n_gold_spans` in every summary.
+The paired bootstrap is the one to use for comparisons — both configs answer identical
+questions, so pairing removes the question-difficulty variance that dominates the
+independent intervals.
+
+### What actually needs to happen next
+
+Not more tuning. The set has to get bigger before any tuning result can be read. 127 new
+questions (174 gold spans) are drafted and mechanically verified in
+`evals/golden_expansion_unreviewed.jsonl` — deliberately NOT merged into
+`golden_set.jsonl`, because `scripts/verify_golden.py` checks findability, triviality and
+duplication, and none of those is a human deciding whether a question is well-posed.
+
+### Temporal questions: the plan's fix was the wrong fix
+
+The plan proposed metadata date-filtering for the 8 temporal questions (6 of which fail).
+Reading them first: **every one spans two documents from different periods** — two gold
+docs, years apart, in all 8. A date filter would guarantee missing half of every one of
+them. They are structurally multi-hop, so decomposition is the right mechanism and the
+filter idea was dropped before being built.
+
+### Operational: how to run a long job here without losing it
+
+Four separate ways a job "started and nothing happened", all in one session:
+
+  * `nohup ... &` detaches, so the harness reports the *launcher* finished while the real
+    process runs on invisibly. One such orphan ran 30 minutes and poisoned every GPU
+    timing taken beside it.
+  * Piping a build through `grep` block-buffers its output to a file, so a job that is
+    working looks identical to one that is wedged.
+  * Killing an MPS job can leave the next one crawling at ~4% speed — 32 seconds of CPU in
+    14 minutes. A clean restart embedded the same chunks in under a minute.
+  * FAISS and a second CrossEncoder in one process aborts in native code with no traceback
+    and a leaked-semaphore warning. The real pipeline never does this; benchmark scripts do.
+
+What works: `python -u` writing straight to a log, harness-tracked, no pipes, and progress
+verified by log growth rather than by `%cpu` — which understates MPS work badly enough to
+read as stalled.

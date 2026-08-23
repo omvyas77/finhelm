@@ -8,10 +8,11 @@ rather than a different code path per row of the results table.
 from __future__ import annotations
 
 import functools
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from ..agent.decompose import decompose
 from ..config import Config
-from ..stores import INDEX_DIR, load_store
+from ..stores import INDEX_DIR, index_name, load_store
 from ..stores.base import Hit
 from . import bm25, dense, hybrid, window
 from .rerank import rerank
@@ -23,6 +24,17 @@ class Retrieved:
     hits: list[Hit]
     route: Route
     rerank_ms: int = 0
+    # Sub-questions actually issued, empty when decomposition was off or declined to
+    # split. Recorded so a multi-hop answer can be traced back to the queries that fed
+    # it rather than to the one the user typed.
+    sub_questions: list[str] = field(default_factory=list)
+    # The full candidate pool as it stood before reranking and before truncation to
+    # top_k_context — i.e. what retrieval actually found, as opposed to what survived
+    # selection. Carried because the two failure modes underneath a recall miss want
+    # opposite fixes and are indistinguishable from `hits` alone: a gold document that
+    # reached the pool and was then dropped is a fusion/rerank problem, while one that
+    # never reached it is a representation problem. Day 2 could not tell them apart.
+    candidates: list[Hit] = field(default_factory=list)
 
 
 FALLBACK_STRATEGY = "fixed"
@@ -33,7 +45,8 @@ FALLBACK_STRATEGY = "fixed"
 STRATEGY_FALLBACKS: dict[tuple[str, str], str] = {}
 
 
-def _available(collection: str, strategy: str, retriever: str) -> bool:
+def _available(collection: str, strategy: str, retriever: str,
+               contextual: bool = False) -> bool:
     """Can this (collection, strategy) actually be served by this retriever?
 
     The two retrievers read different artifacts, and the artifacts need not be in sync:
@@ -48,7 +61,7 @@ def _available(collection: str, strategy: str, retriever: str) -> bool:
     Hybrid needs both, so it requires both to be present.
     """
     has_chunks = (bm25.PROCESSED / f"chunks_{collection}_{strategy}.parquet").exists()
-    has_index = (INDEX_DIR / f"{collection}_{strategy}").exists()
+    has_index = (INDEX_DIR / index_name(collection, strategy, contextual)).exists()
     if retriever == "bm25":
         return has_chunks
     if retriever == "dense":
@@ -57,7 +70,8 @@ def _available(collection: str, strategy: str, retriever: str) -> bool:
 
 
 @functools.lru_cache(maxsize=32)
-def _resolve_strategy(collection: str, strategy: str, retriever: str) -> str:
+def _resolve_strategy(collection: str, strategy: str, retriever: str,
+                      contextual: bool = False) -> str:
     """Return the chunking strategy actually available for this collection.
 
     Only `filings` was chunked under all three strategies; `complaints` exists as `fixed`
@@ -71,7 +85,7 @@ def _resolve_strategy(collection: str, strategy: str, retriever: str) -> str:
     "semantic vs fixed" that quietly ran half its corpus as fixed either way would
     overstate what was compared.
     """
-    if _available(collection, strategy, retriever):
+    if _available(collection, strategy, retriever, contextual):
         return strategy
     STRATEGY_FALLBACKS[(collection, strategy)] = FALLBACK_STRATEGY
     return FALLBACK_STRATEGY
@@ -79,12 +93,13 @@ def _resolve_strategy(collection: str, strategy: str, retriever: str) -> str:
 
 def _from_collection(query: str, collection: str, cfg: Config, filters: dict | None) -> list[Hit]:
     k = cfg.top_k_retrieve
-    strategy = _resolve_strategy(collection, cfg.chunking, cfg.retriever)
+    strategy = _resolve_strategy(collection, cfg.chunking, cfg.retriever,
+                                 cfg.contextual_headers)
 
     if cfg.retriever == "bm25":
         return bm25.load_index(collection, strategy).search(query, k, filters)
 
-    store = load_store(collection, strategy, cfg.store)
+    store = load_store(collection, strategy, cfg.store, cfg.contextual_headers)
     dense_hits = dense.search(query, store, k, cfg.embed_model, filters)
     if cfg.retriever == "dense":
         return dense_hits
@@ -106,32 +121,58 @@ def retrieve(
         else route(query)
     )
 
-    used = [(c, _resolve_strategy(c, cfg.chunking, cfg.retriever)) for c in decision.collections]
-    per_collection = [_from_collection(query, c, cfg, filters) for c in decision.collections]
+    used = [(c, _resolve_strategy(c, cfg.chunking, cfg.retriever, cfg.contextual_headers))
+            for c in decision.collections]
 
-    # Candidates are assembled at full width first. When reranking is on, the cross-encoder
-    # needs the whole ~20-per-collection pool to work with — truncating to top_k_context
-    # before reranking would hand it the bi-encoder's answer and ask it to confirm that,
-    # which is exactly the mistake reranking exists to correct.
-    if len(per_collection) == 1:
+    # Routing happens once, on the question as asked. Sub-questions of a filings question
+    # are still filings questions, and re-routing each one would spend a model call per
+    # split to re-derive the same answer.
+    sub_questions: list[str] = []
+    if cfg.agentic:
+        split = decompose(query, cfg.max_sub_questions)
+        if split != [query]:
+            sub_questions = split
+
+    # The original query is always retrieved for, even when a split succeeded: fusing the
+    # sub-questions *with* it means a decomposition that silently drops a facet costs
+    # ranking rather than evidence. See agent/decompose.py.
+    queries = [query, *sub_questions]
+
+    pools = []
+    for q in queries:
+        per_collection = [_from_collection(q, c, cfg, filters) for c in decision.collections]
         # Fusing a single list would only overwrite each score with 1/(rrf_k + rank),
         # throwing away the cosine or BM25 value for no gain. Keep the real scores —
         # Day 2 needs them to tell a confident hit from a barely-above-noise one.
-        candidates = per_collection[0]
-    else:
         # Across collections it is the opposite: `filings` and `complaints` are separate
         # indexes whose scores are not on a comparable scale, so rank fusion is the only
         # defensible way to interleave them.
-        candidates = hybrid.fuse(per_collection, cfg.top_k_retrieve, cfg.rrf_k)
+        pools.append(per_collection[0] if len(per_collection) == 1
+                     else hybrid.fuse(per_collection, cfg.top_k_retrieve, cfg.rrf_k))
+
+    # Candidates are assembled at full width first. When reranking is on, the cross-encoder
+    # needs the whole pool to work with — truncating to top_k_context before reranking
+    # would hand it the bi-encoder's answer and ask it to confirm that, which is exactly
+    # the mistake reranking exists to correct.
+    if len(pools) == 1:
+        candidates = pools[0]
+    else:
+        # Widen the fused pool with the number of queries. Fusing 3 pools back down to
+        # top_k_retrieve would discard most of what decomposition just went and found.
+        candidates = hybrid.fuse(pools, cfg.top_k_retrieve * len(pools), cfg.rrf_k)
 
     # Sentence-window hits carry only the indexed sentence until here; window.expand
     # splices their neighbours back in. It runs last, on the selected hits only, so both
     # scorers above still see the bare sentence — see window.py.
+    # Reranking scores against the *original* question, never a sub-question: the final
+    # context has to be the passages that best answer what was actually asked.
     if cfg.rerank:
         hits, rerank_ms = rerank(query, candidates, cfg.top_k_context, cfg.rerank_model)
-        return Retrieved(window.expand(hits, used), decision, rerank_ms)
+        return Retrieved(window.expand(hits, used), decision, rerank_ms,
+                         sub_questions, candidates)
 
-    return Retrieved(window.expand(candidates[: cfg.top_k_context], used), decision)
+    return Retrieved(window.expand(candidates[: cfg.top_k_context], used), decision,
+                     sub_questions=sub_questions, candidates=candidates)
 
 
 __all__ = ["retrieve", "Retrieved", "Route", "route", "STRATEGY_FALLBACKS"]
