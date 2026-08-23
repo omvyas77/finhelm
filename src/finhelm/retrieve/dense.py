@@ -18,5 +18,7 @@ def search(
     embed_model: str,
     filters: dict | None = None,
 ) -> list[Hit]:
-    vector = encode([query], embed_model)[0]
+    # is_query applies the model's retrieval instruction prefix; passages are embedded
+    # bare at index time. See embeddings.QUERY_PREFIXES.
+    vector = encode([query], embed_model, is_query=True)[0]
     return store.search(vector, k, filters)

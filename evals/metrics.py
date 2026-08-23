@@ -33,6 +33,8 @@ answer — and it means one golden set scores every strategy fairly.
 
 from __future__ import annotations
 
+import math
+import random
 import re
 from typing import Iterable, Sequence
 
@@ -214,6 +216,79 @@ def uncited_claims(answer: str) -> int:
     return sum(1 for s in _claim_sentences(answer) if not _CITATION.search(s))
 
 
+# ---------------------------------------------------------------------------------
+# Uncertainty
+# ---------------------------------------------------------------------------------
+# Day 2 ranked 18 configurations on a golden set holding 74 gold spans and reported
+# differences as small as 0.01 as if they were results. At p ~ 0.39 the standard error
+# on recall is sqrt(.39*.61/74) ~ 0.057, so the 95% interval on the headline number is
+# roughly +/- 0.11 — wide enough to contain the top six rows of that table. The ranking
+# was mostly noise with an ordering printed on it.
+#
+# Two things fix that, and both are reported rather than left to the reader:
+#
+#   * a Wilson interval on every rate, which unlike the normal approximation stays inside
+#     [0, 1] and behaves at the small counts this set actually has;
+#   * a *paired* bootstrap for comparing two runs. Independent intervals overlapping is
+#     not evidence of no difference when both configurations answered the identical
+#     questions; pairing removes the question-difficulty variance that dominates here and
+#     is a far more sensitive test.
+#
+# Gold spans are also correlated within a question — a multi-hop question contributes two
+# spans that succeed or fail together more often than chance — so the bootstrap resamples
+# *questions*, not spans. Resampling spans would understate the interval.
+
+
+def wilson(successes: float, n: int, z: float = 1.96) -> tuple[float, float]:
+    """95% Wilson score interval for a rate. Returns (low, high)."""
+    if n == 0:
+        return (0.0, 0.0)
+    p = successes / n
+    denom = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / denom
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
+    return (max(0.0, centre - half), min(1.0, centre + half))
+
+
+def bootstrap_paired(a: Sequence[float], b: Sequence[float], rounds: int = 10000,
+                     seed: int = 0) -> dict:
+    """Paired bootstrap over per-question scores from two runs.
+
+    `a` and `b` must be aligned: element i is the same question under both configs.
+    Returns the observed difference, its 95% interval, and the fraction of resamples in
+    which b beat a. An interval containing 0 means the runs are indistinguishable on this
+    golden set — which is a finding about the golden set as much as about the configs.
+    """
+    if len(a) != len(b):
+        raise ValueError(f"unpaired inputs: {len(a)} vs {len(b)}")
+    pairs = [(x, y) for x, y in zip(a, b) if x is not None and y is not None]
+    if not pairs:
+        return {"delta": None, "low": None, "high": None, "p_better": None, "n": 0}
+
+    rng = random.Random(seed)
+    n = len(pairs)
+    observed = sum(y - x for x, y in pairs) / n
+    deltas = []
+    for _ in range(rounds):
+        sample = [pairs[rng.randrange(n)] for _ in range(n)]
+        deltas.append(sum(y - x for x, y in sample) / n)
+    deltas.sort()
+    return {
+        "delta": observed,
+        "low": deltas[int(0.025 * rounds)],
+        "high": deltas[int(0.975 * rounds)],
+        "p_better": sum(1 for d in deltas if d > 0) / rounds,
+        "n": n,
+    }
+
+
+def per_question_recall(records: Sequence[dict], k: int = 5,
+                        threshold: float = 0.0) -> dict[str, float]:
+    """Recall per question id — the aligned input bootstrap_paired needs."""
+    return {r["id"]: recall_at_k(r["retrieved"], r.get("gold_spans", []), k, threshold)
+            for r in records if r.get("gold_spans")}
+
+
 NEGATIVE_TYPES = ("unanswerable", "out_of_scope")
 ABSTAIN_PREFIX = "INSUFFICIENT_CONTEXT"
 
@@ -273,7 +348,17 @@ def aggregate(records: Sequence[dict], k: int = 5, threshold: float = 0.0) -> di
         vals = [v for v in values if v is not None]
         return sum(vals) / len(vals) if vals else None
 
+    # Span-level counts for the interval: recall is a rate over gold spans, so the
+    # interval must be computed on spans found / spans total, not on the mean of
+    # per-question means (which weights a 2-span question the same as a 1-span one).
+    spans = [(g, r) for r in records for g in r.get("gold_spans", [])]
+    found = sum(1 for g, r in spans if any(is_hit(c, g, threshold) for c in r["retrieved"][:k]))
+    low, high = wilson(found, len(spans))
+
     return {
+        f"recall_at_{k}_ci_low": low,
+        f"recall_at_{k}_ci_high": high,
+        "n_gold_spans": float(len(spans)),
         f"recall_at_{k}": mean(
             recall_at_k(r["retrieved"], r.get("gold_spans", []), k, threshold)
             for r in records

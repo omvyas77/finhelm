@@ -75,8 +75,34 @@ def _encode_all(model, texts: list[str], batch_size: int, progress: bool) -> np.
     return np.vstack(blocks)
 
 
+# Instruction prefixes for asymmetric retrieval models.
+#
+# BGE v1.5 is trained with the query and the passage encoded differently: passages go in
+# bare, queries carry an instruction. Embedding both the same way — which is what this
+# module did through all of Day 2 — leaves the query vector in a slightly different region
+# than the training distribution. Measured on the Day 2 golden set it costs about 4 points
+# of recall@5, which is small but free to recover and simply wrong to leave in.
+#
+# Keyed by model prefix because the correct string is model-specific (E5 wants "query: ",
+# BGE wants the sentence below) and guessing it for an unknown model is worse than
+# skipping it, so anything unrecognised gets no prefix at all.
+QUERY_PREFIXES = {
+    "BAAI/bge-": "Represent this sentence for searching relevant passages: ",
+    "intfloat/e5-": "query: ",
+    "intfloat/multilingual-e5-": "query: ",
+}
+
+
+def query_prefix(model_name: str) -> str:
+    for stem, prefix in QUERY_PREFIXES.items():
+        if model_name.startswith(stem):
+            return prefix
+    return ""
+
+
 def encode(texts: list[str], model_name: str, batch_size: int = 128,
-           progress: bool = False, max_seq_length: int | None = None) -> np.ndarray:
+           progress: bool = False, max_seq_length: int | None = None,
+           is_query: bool = False) -> np.ndarray:
     """Normalized embeddings, float32. Normalized so inner product == cosine.
 
     `max_seq_length` trades accuracy for speed. Leave it None for indexing, where the
@@ -84,6 +110,11 @@ def encode(texts: list[str], model_name: str, batch_size: int = 128,
     relative distance between adjacent sentences to locate a topic boundary, and
     truncation moves those distances far less than it costs in throughput.
     """
+    if is_query:
+        prefix = query_prefix(model_name)
+        if prefix:
+            texts = [prefix + t for t in texts]
+
     model = get_model(model_name)
     previous = model.max_seq_length
     if max_seq_length:

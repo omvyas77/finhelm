@@ -77,6 +77,18 @@ def evaluate_one(question: dict, cfg: Config, retrieve_only: bool) -> dict:
             "abstained": False,
             "retrieval_ms": int((time.monotonic() - started) * 1000),
             "generation_ms": 0,
+            # The pre-rerank candidate pool, in rank order, as ids only — carrying its
+            # text would add ~9 MB per result file.
+            #
+            # chunk_ids and not just doc_ids: whether the right *document* reached the
+            # pool is a different and much weaker question than whether the chunk holding
+            # the gold span did, since a filing contributes many chunks and only some
+            # contain the answer. Scoring the pool on doc_id alone overstates how close
+            # retrieval came. The audit resolves these ids back to text via the chunk
+            # parquet and runs the same is_hit used for the headline metric.
+            "pool_chunk_ids": [h.chunk_id for h in found.candidates],
+            "pool_doc_ids": [h.metadata.get("doc_id") for h in found.candidates],
+            "pool_size": len(found.candidates),
         }
     else:
         result = answer(question["question"], cfg)
@@ -192,6 +204,14 @@ def main() -> None:
     ap.add_argument("--rerank", action="store_true")
     ap.add_argument("--k", type=int, default=5, help="k for recall@k")
     ap.add_argument("--top-k-context", type=int, default=None)
+    # The pool width the reranker gets to choose from. Never swept during Day 2 because it
+    # had no flag, which left it the one retrieval knob fixed at its default through all
+    # 18 cells.
+    ap.add_argument("--top-k-retrieve", type=int, default=None)
+    ap.add_argument("--contextual", action="store_true",
+                    help="use the contextual-header index (requires *_ctx built)")
+    ap.add_argument("--agentic", action="store_true",
+                    help="decompose multi-hop questions before retrieving")
     ap.add_argument("--retrieve-only", action="store_true",
                     help="skip generation; retrieval metrics only, no LLM cost")
     ap.add_argument("--limit", type=int, default=None, help="first N questions (smoke test)")
@@ -202,6 +222,12 @@ def main() -> None:
     overrides = {"chunking": args.chunking, "retriever": args.retriever, "rerank": args.rerank}
     if args.top_k_context is not None:
         overrides["top_k_context"] = args.top_k_context
+    if args.top_k_retrieve is not None:
+        overrides["top_k_retrieve"] = args.top_k_retrieve
+    if args.contextual:
+        overrides["contextual_headers"] = True
+    if args.agentic:
+        overrides["agentic"] = True
     cfg = Config(**overrides)
 
     questions = load_golden(Path(args.golden))

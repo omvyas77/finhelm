@@ -19,6 +19,10 @@ class Config:
     embed_model: str = "BAAI/bge-small-en-v1.5"
     embed_dim: int = 384
     store: str = "faiss"  # faiss | pgvector
+    # Prepend issuer/form/period/section to a chunk before embedding it. Off reproduces
+    # the Day 2 indexes exactly; on requires an index built with it, which is why the
+    # flag also selects the index directory (see stores.index_name).
+    contextual_headers: bool = False
 
     # retrieval
     retriever: str = "dense"  # dense | bm25 | hybrid
@@ -61,7 +65,9 @@ class Config:
         return (
             f"{self.chunking}-{self.retriever}"
             f"{'-rr' if self.rerank else ''}"
+            f"{'-ctx' if self.contextual_headers else ''}"
             f"{'-ag' if self.agentic else ''}"
+            f"{'' if self.top_k_retrieve == 20 else f'-k{self.top_k_retrieve}'}"
         )
 
     def __post_init__(self) -> None:

@@ -35,6 +35,11 @@ RETRIEVERS = ["bm25", "dense", "hybrid"]
 # invites the reader to blame the retriever for the generator's time.
 COLUMNS = [
     ("recall@5", "recall_at_5", ".3f"),
+    # Reported next to the point estimate, never below it in a footnote. Day 2's table
+    # ranked 18 cells on gaps of 0.01-0.07 against a golden set whose 95% interval is
+    # ~0.22 wide, which made the ordering an artifact of sampling. Anyone reading a
+    # recall column without its interval will draw the same wrong conclusion again.
+    ("95% CI", "_recall_ci", "ci"),
     ("MRR", "mrr", ".3f"),
     ("route acc", "route_accuracy", ".3f"),
     ("p50 ret ms", "p50_retrieval_ms", ".0f"),
@@ -49,6 +54,13 @@ LEGACY_LATENCY = {
     "p50_retrieval_ms": "p50_latency_ms",
     "p95_retrieval_ms": "p95_latency_ms",
 }
+
+
+def format_ci(row: dict) -> str:
+    low, high = row.get("recall_at_5_ci_low"), row.get("recall_at_5_ci_high")
+    if low is None or high is None:
+        return ""
+    return f"[{low:.3f}, {high:.3f}]"
 
 
 def cell_value(row: dict, key: str):
@@ -106,6 +118,9 @@ def render(runs: dict[tuple[str, str, bool], dict], rerank: bool) -> tuple[list[
 
             cells = []
             for _, key, spec in COLUMNS:
+                if spec == "ci":
+                    cells.append(format_ci(row))
+                    continue
                 value = cell_value(row, key)
                 cells.append("" if value is None else format(value, spec))
 
@@ -151,6 +166,13 @@ def main() -> None:
     measured = len(runs)
     total = len(CHUNKINGS) * len(RETRIEVERS) * 2
     print(f"\n{measured}/{total} cells measured")
+
+    spans = max((r.get("n_gold_spans") or 0) for r in runs.values())
+    if spans:
+        print(f"\nIntervals are Wilson 95% on {spans:.0f} gold spans. Cells whose intervals "
+              f"overlap are not distinguishable on this\ngolden set — compare two configs "
+              f"with a paired bootstrap (evals.metrics.bootstrap_paired), which is far\n"
+              f"more sensitive because both ran the identical questions.")
 
 
 if __name__ == "__main__":
