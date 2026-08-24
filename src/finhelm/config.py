@@ -23,6 +23,11 @@ class Config:
     # the Day 2 indexes exactly; on requires an index built with it, which is why the
     # flag also selects the index directory (see stores.index_name).
     contextual_headers: bool = False
+    # BGE/E5 are trained asymmetrically: passages are embedded bare, queries carry a
+    # retrieval instruction. On by default because omitting it is simply wrong for these
+    # models; the flag exists so the effect can be measured rather than assumed, which is
+    # what the 74-span golden set was unable to do.
+    query_prefix: bool = True
 
     # retrieval
     retriever: str = "dense"  # dense | bm25 | hybrid
@@ -66,6 +71,7 @@ class Config:
             f"{self.chunking}-{self.retriever}"
             f"{'-rr' if self.rerank else ''}"
             f"{'-ctx' if self.contextual_headers else ''}"
+            f"{'' if self.query_prefix else '-noprefix'}"
             f"{'-ag' if self.agentic else ''}"
             f"{'' if self.top_k_retrieve == 20 else f'-k{self.top_k_retrieve}'}"
         )

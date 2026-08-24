@@ -8,6 +8,7 @@ from pathlib import Path
 from .base import Hit, VectorStore, matches
 
 ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_EMBED_MODEL = "BAAI/bge-small-en-v1.5"
 INDEX_DIR = ROOT / "data" / "index"
 
 
@@ -53,4 +54,4 @@ def load_store(collection: str, strategy: str, backend: str = "faiss",
     raise ValueError(f"unknown store backend: {backend}")
 
 
-__all__ = ["Hit", "VectorStore", "matches", "load_store", "index_name", "INDEX_DIR"]
+__all__ = ["Hit", "VectorStore", "matches", "load_store", "index_name", "model_slug", "INDEX_DIR"]

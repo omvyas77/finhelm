@@ -102,7 +102,8 @@ def _from_collection(query: str, collection: str, cfg: Config, filters: dict | N
 
     store = load_store(collection, strategy, cfg.store, cfg.contextual_headers,
                        cfg.embed_model)
-    dense_hits = dense.search(query, store, k, cfg.embed_model, filters)
+    dense_hits = dense.search(query, store, k, cfg.embed_model, filters,
+                              cfg.query_prefix)
     if cfg.retriever == "dense":
         return dense_hits
 
