@@ -207,7 +207,12 @@ def main() -> None:
                     choices=["fixed", "semantic", "sentence_window"])
     ap.add_argument("--retriever", default="dense", choices=["dense", "bm25", "hybrid"])
     ap.add_argument("--rerank", action="store_true")
-    ap.add_argument("--k", type=int, default=5, help="k for recall@k")
+    # Defaults to whatever the generator is actually given (cfg.top_k_context), not a
+    # fixed 5. Reporting recall@5 while feeding the model 8 chunks understates the system
+    # for no reason — measured at 0.4558 against 0.4917 for the same run — and the gap
+    # would grow silently with any change to top_k_context.
+    ap.add_argument("--k", type=int, default=None,
+                    help="k for recall@k (default: cfg.top_k_context)")
     ap.add_argument("--top-k-context", type=int, default=None)
     # The pool width the reranker gets to choose from. Never swept during Day 2 because it
     # had no flag, which left it the one retrieval knob fixed at its default through all
@@ -216,6 +221,9 @@ def main() -> None:
     ap.add_argument("--embed-model", default=None)
     ap.add_argument("--no-query-prefix", action="store_true",
                     help="control arm: embed the query bare, as Day 2 did")
+    ap.add_argument("--cross-query-fusion", choices=["rrf", "interleave"], default=None)
+    ap.add_argument("--filter-by-issuer", action="store_true")
+    ap.add_argument("--rerank-per-subquestion", action="store_true")
     ap.add_argument("--contextual", action="store_true",
                     help="use the contextual-header index (requires *_ctx built)")
     ap.add_argument("--agentic", action="store_true",
@@ -236,11 +244,20 @@ def main() -> None:
         overrides["contextual_headers"] = True
     if args.embed_model:
         overrides["embed_model"] = args.embed_model
+    if args.cross_query_fusion:
+        overrides["cross_query_fusion"] = args.cross_query_fusion
+    if args.filter_by_issuer:
+        overrides["filter_by_issuer"] = True
+    if args.rerank_per_subquestion:
+        overrides["rerank_per_subquestion"] = True
     if args.no_query_prefix:
         overrides["query_prefix"] = False
     if args.agentic:
         overrides["agentic"] = True
     cfg = Config(**overrides)
+    # The generator is handed cfg.top_k_context chunks, so that is the k recall must be
+    # measured at unless the caller says otherwise.
+    k = args.k if args.k is not None else cfg.top_k_context
 
     questions = load_golden(Path(args.golden))
     if args.limit:
@@ -254,12 +271,12 @@ def main() -> None:
     for i, question in enumerate(questions, start=1):
         record = evaluate_one(question, cfg, args.retrieve_only)
         records.append(record)
-        recall = M.recall_at_k(record["retrieved"], record["gold_spans"], args.k)
+        recall = M.recall_at_k(record["retrieved"], record["gold_spans"], k)
         flag = "-" if recall is None else f"{recall:.2f}"
         print(f"  [{i:>3}/{len(questions)}] {record['id']} {record['type']:<12} "
-              f"recall@{args.k}={flag} {record['latency_ms']:>6}ms", flush=True)
+              f"recall@{k}={flag} {record['latency_ms']:>6}ms", flush=True)
 
-    summary = summarize(records, cfg, args.k)
+    summary = summarize(records, cfg, k)
 
     # What the run actually did, which is not always what was asked for: not every
     # collection was chunked under every strategy. Carried into the result file and

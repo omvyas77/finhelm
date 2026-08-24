@@ -20,6 +20,8 @@ from __future__ import annotations
 import functools
 import time
 
+from dataclasses import replace
+
 from ..stores.base import Hit
 
 
@@ -58,3 +60,53 @@ def rerank(query: str, hits: list[Hit], k: int, model_name: str) -> tuple[list[H
     elapsed_ms = int((time.monotonic() - started) * 1000)
 
     return [Hit(hit.chunk_id, float(score), hit.metadata) for hit, score in ranked[:k]], elapsed_ms
+
+
+def rerank_per_query(pools: list[list[Hit]], queries: list[str], k: int,
+                     model_name: str) -> tuple[list[Hit], int]:
+    """Rerank each pool against the query that produced it, then take a quota from each.
+
+    The single stage that loses the most evidence on multi-document questions. Reranking
+    the merged pool against the *original* question asks the cross-encoder which passages
+    best answer a string naming two facts, and the honest answer is the passages vaguely
+    about both — never the one that decisively answers half of it. Measured on the 67
+    multi-span questions: 33% of gold spans sat in the candidate pool and were dropped
+    here, against 37% that never reached the pool at all.
+
+    Scoring each pool against its own sub-question removes the mismatch, and a quota per
+    pool makes both halves representable by construction rather than by luck.
+
+    Quotas are handed out round-robin from each pool's reranked order rather than as a
+    fixed ceil(k/n) slice, so a pool with fewer candidates than its share gives the
+    remainder back instead of leaving the budget short.
+
+    An earlier attempt at allocation lost on every tier, and the difference matters: it
+    split the *context* budget while still scoring against the compound original, so it
+    diluted single-span questions without fixing the mismatch. Decomposition is now gated
+    by worth_splitting, so questions needing one fact never reach this path at all.
+    """
+    started = time.monotonic()
+    ranked = []
+    for pool, query in zip(pools, queries):
+        if not pool:
+            ranked.append([])
+            continue
+        scores = _model(model_name).predict([(query, h.text) for h in pool],
+                                            show_progress_bar=False)
+        order = sorted(zip(pool, scores), key=lambda p: float(p[1]), reverse=True)
+        ranked.append([replace(h, score=float(sc)) for h, sc in order])
+
+    out: list[Hit] = []
+    seen: set[str] = set()
+    for depth in range(max((len(r) for r in ranked), default=0)):
+        for pool in ranked:
+            if depth >= len(pool):
+                continue
+            hit = pool[depth]
+            if hit.chunk_id in seen:
+                continue
+            seen.add(hit.chunk_id)
+            out.append(hit)
+            if len(out) >= k:
+                return out, int((time.monotonic() - started) * 1000)
+    return out, int((time.monotonic() - started) * 1000)

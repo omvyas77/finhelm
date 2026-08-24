@@ -173,4 +173,33 @@ def decompose(question: str, max_sub_questions: int = 4,
     return subs
 
 
-__all__ = ["decompose", "worth_splitting"]
+def filters_for(question: str) -> dict | None:
+    """Metadata filter implied by a question, or None when it implies nothing safe.
+
+    Decomposition produces sub-questions that each name exactly one issuer ("What was
+    American Express's ICS segment revenue in 2024?"), which makes a ticker filter both
+    available and precise: it removes roughly nine tenths of the corpus as distractors
+    before ranking begins, so the sub-question competes against its own issuer's filings
+    rather than against every large bank's near-identical prose.
+
+    Two restrictions, both correctness rather than caution:
+
+    * Exactly one issuer, or no filter. Zero means nothing to filter on; two or more means
+      the question spans both, and filtering to either one guarantees missing the other
+      half — which is the failure this is meant to fix, not cause. The original compound
+      question therefore filters to nothing by construction, which is correct: it is the
+      sub-questions that are single-issuer.
+
+    * No date filter, despite `date` being indexed and every sub-question naming a period.
+      Filings routinely report prior-period figures — a 2023 number is usually stated in
+      the 2024 10-K as the comparative column — so filtering to the year a question asks
+      about would exclude the document that actually answers it. The gold spans confirm
+      this: several questions about one year are answered by a filing dated the next.
+    """
+    issuers = _issuers(question)
+    if len(issuers) != 1:
+        return None
+    return {"ticker": issuers.pop()}
+
+
+__all__ = ["decompose", "worth_splitting", "filters_for"]

@@ -10,12 +10,12 @@ from __future__ import annotations
 import functools
 from dataclasses import dataclass, field
 
-from ..agent.decompose import decompose
+from ..agent.decompose import decompose, filters_for
 from ..config import Config
 from ..stores import INDEX_DIR, index_name, load_store
 from ..stores.base import Hit
 from . import bm25, dense, hybrid, window
-from .rerank import rerank
+from .rerank import rerank, rerank_per_query
 from .router import Route, route
 
 
@@ -162,7 +162,14 @@ def retrieve(
 
     pools = []
     for q in queries:
-        per_collection = [_from_collection(q, c, cfg, filters) for c in decision.collections]
+        per_collection = []
+        for c in decision.collections:
+            # A sub-question's issuer filter applies only where the field exists. CFPB
+            # complaint chunks carry no ticker, so filtering them by one matches nothing
+            # and would silently empty that half of the pool rather than narrowing it.
+            implied = filters_for(q) if (cfg.filter_by_issuer and c == "filings") else None
+            merged = {**(filters or {}), **(implied or {})} or None
+            per_collection.append(_from_collection(q, c, cfg, merged))
         # Fusing a single list would only overwrite each score with 1/(rrf_k + rank),
         # throwing away the cosine or BM25 value for no gain. Keep the real scores —
         # Day 2 needs them to tell a confident hit from a barely-above-noise one.
@@ -179,9 +186,12 @@ def retrieve(
     if len(pools) == 1:
         candidates = pools[0]
     else:
-        # Widen the fused pool with the number of queries. Fusing 3 pools back down to
-        # top_k_retrieve would discard most of what decomposition just went and found.
-        candidates = hybrid.fuse(pools, cfg.top_k_retrieve * len(pools), cfg.rrf_k)
+        # Widen the pool with the number of queries. Narrowing back to top_k_retrieve
+        # would discard most of what decomposition just went and found.
+        width = cfg.top_k_retrieve * len(pools)
+        candidates = (hybrid.interleave(pools, width)
+                      if cfg.cross_query_fusion == "interleave"
+                      else hybrid.fuse(pools, width, cfg.rrf_k))
 
     # Sentence-window hits carry only the indexed sentence until here; window.expand
     # splices their neighbours back in. It runs last, on the selected hits only, so both
@@ -190,6 +200,12 @@ def retrieve(
     # context has to be the passages that best answer what was actually asked. Giving each
     # sub-question its own quota of the budget instead was tried and measured worse on
     # every tier — see _allocate.
+    if cfg.rerank and cfg.rerank_per_subquestion and len(pools) > 1:
+        hits, rerank_ms = rerank_per_query(pools, queries, cfg.top_k_context,
+                                           cfg.rerank_model)
+        return Retrieved(window.expand(hits, used), decision, rerank_ms,
+                         sub_questions, candidates)
+
     if cfg.rerank:
         hits, rerank_ms = rerank(query, candidates, cfg.top_k_context, cfg.rerank_model)
         return Retrieved(window.expand(hits, used), decision, rerank_ms,

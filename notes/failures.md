@@ -1104,3 +1104,66 @@ happening *inside* a single flush window. `MPS_FLUSH_EVERY` is a memory budget r
 a count, and a 768-dim model puts roughly twice the allocator pressure through the same
 window. Lowering it 8192 -> 2048 held a steady 22 chunks/s across the entire 43k-chunk
 build with no collapse.
+
+## The architecture, not the model — and I aimed the first fix at the wrong stage
+
+Tripling the embedding model moved the pooled number by +0.008, which is the shape of a
+result where something downstream is discarding what the model improved. It was, but not
+where I first said.
+
+### What is genuinely broken: RRF across sub-questions
+
+`hybrid.fuse` scores `1/(rrf_k + rank)` summed across pools. With rrf_k=60 on 20-item
+lists the spread across an entire list is 1.31x, while each extra pool adds a full
+increment:
+
+    rank  1 in one pool    0.016393
+    rank 20 in two pools   0.025000   <- wins
+
+A chunk ranked last in two pools outranks a chunk ranked first in one. For a comparison
+that is backwards: the passage answering the AXP half is rank 1 in the AXP sub-question's
+pool and absent from the JPM one, while a generic passage mediocre in both appears twice
+and wins. Traced on six multi-span questions, all 8 of every fused top-8 appeared in more
+than one pool, and gold chunks at rank 6, 15 and 17 within a single pool emerged at 36, 42
+and 52 after fusion. rrf_k=60 comes from TREC, where lists are hundreds long and there are
+two of them; it is the wrong constant for five 20-item pools.
+
+### Why fixing it changed almost nothing
+
+Interleaving instead of fusing: +0.0028 pooled, +0.0075 multi-span, one question of 67
+changed. Not resolved.
+
+The demotion is real and its consequence is absorbed. The candidate pool is
+`top_k_retrieve * n_pools` = 60 wide, so a chunk demoted to rank 42 still arrives, and the
+reranker rescores the whole pool anyway. Fusion order barely reaches the output. The
+arithmetic was right and the conclusion drawn from it was wrong, because the analysis
+stopped one stage short of where the decision is actually made.
+
+### Where the evidence is actually lost
+
+Multi-span gold spans, 134 of them across 67 questions:
+
+    reach the final top-8                       31%
+    in the candidate pool, dropped by rerank    33%   <- the reranker's doing
+    never reach the candidate pool              37%
+
+`rerank(query, candidates, ...)` scores every candidate against the *original compound
+question*. Asked which passages best answer a string naming two facts, a cross-encoder
+correctly prefers passages moderately about both — never the one that decisively answers
+half. So a third of the gold spans that retrieval successfully found are discarded at the
+last step, by a component doing exactly what it was asked to do.
+
+`rerank_per_query` scores each pool against the sub-question that produced it and draws
+quotas round-robin from each pool's own ranking. Built and wired behind
+`--rerank-per-subquestion`; not yet measured.
+
+This differs from the allocation attempt recorded above, which lost on every tier, in two
+ways that matter: it splits the *rerank* stage rather than the context budget, and
+decomposition is now gated by `worth_splitting`, so single-span questions never enter the
+path. That gating is what caused the earlier damage.
+
+### Metric alignment
+
+`--k` now defaults to `cfg.top_k_context` rather than a fixed 5. The generator is handed 8
+chunks, so reporting recall@5 understated the system by 3.6 points (0.4558 vs 0.4917) for
+no reason, and the gap would have grown silently with any change to top_k_context.

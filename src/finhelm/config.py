@@ -32,6 +32,19 @@ class Config:
     # retrieval
     retriever: str = "dense"  # dense | bm25 | hybrid
     rrf_k: int = 60
+    # How pools from *different sub-questions* are combined. "rrf" sums reciprocal ranks,
+    # which scores a chunk by how many pools it appears in and demotes anything specific
+    # to one half of a comparison; "interleave" round-robins and preserves within-pool
+    # rank. See retrieve/hybrid.py::interleave. Unrelated to how dense and BM25 are fused
+    # *within* a collection, which stays RRF because there both lists answer one question.
+    cross_query_fusion: str = "rrf"  # rrf | interleave
+    # Restrict a single-issuer sub-question to that issuer's filings before ranking.
+    # See agent/decompose.py::filters_for for why issuer only and never date.
+    filter_by_issuer: bool = False
+    # Rerank each sub-question's pool against that sub-question and take a quota from
+    # each, instead of scoring one merged pool against the compound original.
+    # See retrieve/rerank.py::rerank_per_query.
+    rerank_per_subquestion: bool = False
     rerank: bool = False
     rerank_model: str = "BAAI/bge-reranker-base"
     top_k_retrieve: int = 20
@@ -72,6 +85,9 @@ class Config:
             f"{'-rr' if self.rerank else ''}"
             f"{'-ctx' if self.contextual_headers else ''}"
             f"{'' if self.query_prefix else '-noprefix'}"
+            f"{'-il' if self.cross_query_fusion == 'interleave' else ''}"
+            f"{'-flt' if self.filter_by_issuer else ''}"
+            f"{'-rpq' if self.rerank_per_subquestion else ''}"
             f"{'-ag' if self.agentic else ''}"
             f"{'' if self.top_k_retrieve == 20 else f'-k{self.top_k_retrieve}'}"
         )
