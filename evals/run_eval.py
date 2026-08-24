@@ -222,7 +222,8 @@ def main() -> None:
     ap.add_argument("--no-query-prefix", action="store_true",
                     help="control arm: embed the query bare, as Day 2 did")
     ap.add_argument("--cross-query-fusion", choices=["rrf", "interleave"], default=None)
-    ap.add_argument("--filter-by-issuer", action="store_true")
+    ap.add_argument("--no-filter-by-issuer", action="store_true",
+                    help="control arm: search every issuer's filings, as before")
     ap.add_argument("--rerank-per-subquestion", action="store_true")
     ap.add_argument("--contextual", action="store_true",
                     help="use the contextual-header index (requires *_ctx built)")
@@ -246,8 +247,8 @@ def main() -> None:
         overrides["embed_model"] = args.embed_model
     if args.cross_query_fusion:
         overrides["cross_query_fusion"] = args.cross_query_fusion
-    if args.filter_by_issuer:
-        overrides["filter_by_issuer"] = True
+    if args.no_filter_by_issuer:
+        overrides["filter_by_issuer"] = False
     if args.rerank_per_subquestion:
         overrides["rerank_per_subquestion"] = True
     if args.no_query_prefix:

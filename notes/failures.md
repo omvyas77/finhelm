@@ -1209,10 +1209,74 @@ What did resolve is latency: p50 retrieval 4440 ms -> 2995 ms, a 33% cut, becaus
 pools of 20 are reranked separately rather than one merged pool of 60 being reranked whole.
 Worth keeping for that alone, and it costs single-span 0.0088 which is inside noise.
 
-### A silent process death, again
+### A silent process death, again — and it was never a code bug
 
 The `--filter-by-issuer` run without per-sub-question reranking stopped at question 168 of
-202 with no traceback, no error and no exit marker — the same native-code crash seen when a
-FAISS store and a cross-encoder live in the same process. It is intermittent: the identical
-command succeeded on retry. Any long eval needs its result file checked for existence
-rather than the run being assumed to have finished.
+202 with no traceback, no error and no exit marker, and a retry died at question 43. I
+recorded this as the "native-code crash seen when a FAISS store and a cross-encoder live in
+the same process", which is the explanation this file had already reached for twice before.
+It was wrong both times.
+
+Running the same path in the foreground returned **exit code 137**. That is 128+9: SIGKILL.
+Nothing crashed — macOS killed the process under memory pressure, which is why there was no
+traceback to find. The absence of an error message was the evidence, and I read it as a
+mysterious native fault rather than as the signature of a process that never got to handle
+its own death.
+
+Measured peak RSS through the identical path, both collections resident, six multi-hop
+questions: **1697 MB, and flat.** On 8 GB that is not close to a limit. The config was never
+the problem. What was: several memory-heavy Python processes of my own running at once —
+an eval, an analysis script, a benchmark — on a machine with 8 GB shared between CPU and
+MPS.
+
+The operational rule is dull and would have saved two failed runs and a wrong diagnosis:
+**check for stray processes before launching, and run one heavy job at a time.** The
+earlier "FAISS and torch cannot share a process" conclusion should be treated as unproven;
+every instance of it so far is explained by memory pressure instead.
+
+### Final four-way, and per-sub-question reranking earns nothing
+
+    config                       all    single-span   multi-span   p50 ret
+    base                       0.4917     0.6053        0.2985      4440 ms
+    rerank-per-subquestion     0.4972     0.5965        0.3284      2995 ms
+    filter only                0.5387     0.6667        0.3209      3434 ms
+    filter + rerank-per-subq   0.5359     0.6667        0.3134      3082 ms
+
+    paired, base -> filter only
+      all          +0.0470  [+0.0193, +0.0773]  p=1.000
+      single-span  +0.0614  [+0.0175, +0.1053]  p=0.999
+      multi-span   +0.0224  [+0.0000, +0.0522]  p=0.953
+
+    paired, filter only -> + rerank-per-subquestion
+      all          -0.0028  [-0.0276, +0.0221]  p=0.367
+
+Issuer filtering alone is the best configuration measured. Adding per-sub-question
+reranking on top of it is worth -0.0028: the two were aimed at the same evidence, and
+filtering gets there first by never admitting the distractors that reranking was being
+asked to sort back out.
+
+`filter_by_issuer` is now on by default. Unlike contextual headers it depends on no
+prebuilt artifact — `filters_for` returns None whenever a question names zero or several
+issuers, so a corpus with no tickers simply never filters — and leaving a +0.047 effect
+behind a flag is a footgun. The run-name suffix is inverted accordingly: `-noflt` marks
+the control arm.
+
+`rerank_per_subquestion` stays in the tree, off. It is the correct fix for a real and
+measured mismatch, it is 13% faster than reranking a merged pool, and it earns nothing
+once filtering is present. Worth re-testing if the corpus ever grows past what an issuer
+filter can usefully narrow.
+
+**Where this leaves the system**, recall@8 on 202 questions / 248 gold spans:
+
+    Day 2 close          0.389   (recall@5, 74 spans, unresolvable interval)
+    + expanded golden    0.4171
+    + contextual headers 0.4475
+    + bge-base           0.4917
+    + issuer filtering   0.5387   single-span 0.6667, multi-span 0.3209
+
+Single-span has moved from 0.5439 to 0.6667 and every step of that is a resolved effect.
+Multi-span has moved from 0.2015 to 0.3209 and almost none of it is: the only intervention
+that resolved there was the embedding model. Four separate attempts to fix multi-span in
+the ranking and selection stages — RRF replacement, per-sub-question rerank, per-sub-
+question filtering, and pool widening before that — have all returned noise. The remaining
+difficulty is not in how candidates are ordered or chosen.

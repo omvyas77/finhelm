@@ -40,7 +40,12 @@ class Config:
     cross_query_fusion: str = "rrf"  # rrf | interleave
     # Restrict a single-issuer sub-question to that issuer's filings before ranking.
     # See agent/decompose.py::filters_for for why issuer only and never date.
-    filter_by_issuer: bool = False
+    # On by default: +0.0470 [+0.0193, +0.0773] p=1.000 against the same config without it,
+    # and unlike contextual_headers it depends on no prebuilt artifact — filters_for()
+    # returns None whenever a question names zero or several issuers, so a corpus without
+    # tickers simply never filters. The run_name suffix is therefore inverted: "-noflt"
+    # marks the control arm rather than "-flt" marking the treatment.
+    filter_by_issuer: bool = True
     # Rerank each sub-question's pool against that sub-question and take a quota from
     # each, instead of scoring one merged pool against the compound original.
     # See retrieve/rerank.py::rerank_per_query.
@@ -86,7 +91,7 @@ class Config:
             f"{'-ctx' if self.contextual_headers else ''}"
             f"{'' if self.query_prefix else '-noprefix'}"
             f"{'-il' if self.cross_query_fusion == 'interleave' else ''}"
-            f"{'-flt' if self.filter_by_issuer else ''}"
+            f"{'' if self.filter_by_issuer else '-noflt'}"
             f"{'-rpq' if self.rerank_per_subquestion else ''}"
             f"{'-ag' if self.agentic else ''}"
             f"{'' if self.top_k_retrieve == 20 else f'-k{self.top_k_retrieve}'}"
