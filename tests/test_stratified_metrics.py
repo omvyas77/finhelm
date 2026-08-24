@@ -107,3 +107,26 @@ def test_aggregate_reports_macro_and_micro_separately():
     assert out["recall_at_5"] == pytest.approx(0.5)
     assert out["recall_at_5_micro"] == pytest.approx(1 / 3)
     assert out["recall_at_5_ci_low"] <= out["recall_at_5"] <= out["recall_at_5_ci_high"]
+
+
+def test_an_interval_touching_zero_is_not_resolved():
+    """The boundary case that produced a false positive: comparing the query prefix on
+    bge-base gave [-0.0166, +0.0000] from a difference vector that was zero for 180 of 181
+    questions. A caller testing `low < 0 < high` reads an upper bound of exactly zero as
+    excluding zero, and reports a resolved effect where there is none."""
+    from evals.metrics import bootstrap_paired
+
+    a = [0.0] * 180 + [1.0]
+    b = [0.0] * 181                      # one question worse, all others identical
+    out = bootstrap_paired(a, b, rounds=2000)
+    assert out["high"] == pytest.approx(0.0, abs=1e-9)
+    assert out["resolved"] is False
+
+
+def test_a_genuine_effect_still_resolves():
+    """The guard above must not make the test unable to detect anything."""
+    from evals.metrics import bootstrap_paired
+
+    out = bootstrap_paired([0.0] * 90 + [1.0] * 91, [1.0] * 181, rounds=2000)
+    assert out["resolved"] is True
+    assert out["low"] > 0
