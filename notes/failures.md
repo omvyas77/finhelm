@@ -1280,3 +1280,40 @@ that resolved there was the embedding model. Four separate attempts to fix multi
 the ranking and selection stages — RRF replacement, per-sub-question rerank, per-sub-
 question filtering, and pool widening before that — have all returned noise. The remaining
 difficulty is not in how candidates are ordered or chosen.
+
+## Widening a filtered pool makes multi-span worse — and that is the finding
+
+Day 2 rejected pool widening on an unfiltered pool, where k=50 admits distractors from
+every issuer. With issuer filtering the pool is high-precision, so widening should admit
+more of the *right* issuer's chunks. Measured beforehand: of the 44 multi-span gold spans
+that never reach the pool, a filtered search puts 21 within k=50 and 31 within k=100.
+
+    config          all      single-span   multi-span   p50 ret   p95 ret
+    filter, k=20  0.5387       0.6667         0.3209     3434 ms   13131 ms
+    filter, k=50  0.5276       0.6754         0.2761    12716 ms   34568 ms
+
+    paired multi-span  -0.0448  [-0.0970, +0.0075]  p_better=0.032
+
+Multi-span got *worse*, at 3.7x the latency. Adding candidates that are known to contain
+gold spans reduced the number of gold spans in the final context.
+
+That is not a null result, it is a diagnosis. Six interventions have now been aimed at
+multi-span — pool widening (twice), RRF replacement, per-sub-question rerank, per-sub-
+question filtering, per-sub-question budget allocation — and the only one that ever
+resolved was changing the embedding model. Put together with two measurements from the
+current config:
+
+  * 35% of multi-span gold spans are in the candidate pool and dropped at selection;
+  * the final top-8 already draws from 6-8 distinct documents on most questions, so
+    document diversity is not the constraint and per-document quotas would do nothing;
+
+the conclusion is that **the cross-encoder cannot discriminate**. For a comparison it
+cannot separate the passage that decisively answers one half from a plausible passage that
+answers neither, so enlarging its input enlarges its opportunity to be wrong. Every fix
+tried so far has been about *which candidates it sees* or *in what order*, and none of
+those can help a scorer that ranks the wrong thing highest.
+
+`bge-reranker-base` is the one component of this pipeline that has never been changed,
+while the embedder, the chunk text, the fusion, the query shape and the filter all have.
+It is also worth +0.157 — the single most valuable component measured on Day 2 — which
+made it look settled rather than unexamined.
