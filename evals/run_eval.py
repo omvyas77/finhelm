@@ -225,6 +225,9 @@ def main() -> None:
     ap.add_argument("--no-filter-by-issuer", action="store_true",
                     help="control arm: search every issuer's filings, as before")
     ap.add_argument("--rerank-per-subquestion", action="store_true")
+    # The one component never varied. Everything else in the pipeline — embedder, chunk
+    # text, fusion, query shape, issuer filter — has been swapped at least once.
+    ap.add_argument("--rerank-model", default=None)
     ap.add_argument("--contextual", action="store_true",
                     help="use the contextual-header index (requires *_ctx built)")
     ap.add_argument("--agentic", action="store_true",
@@ -249,6 +252,8 @@ def main() -> None:
         overrides["cross_query_fusion"] = args.cross_query_fusion
     if args.no_filter_by_issuer:
         overrides["filter_by_issuer"] = False
+    if args.rerank_model:
+        overrides["rerank_model"] = args.rerank_model
     if args.rerank_per_subquestion:
         overrides["rerank_per_subquestion"] = True
     if args.no_query_prefix:
