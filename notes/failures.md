@@ -1167,3 +1167,52 @@ path. That gating is what caused the earlier damage.
 `--k` now defaults to `cfg.top_k_context` rather than a fixed 5. The generator is handed 8
 chunks, so reporting recall@5 understated the system by 3.6 points (0.4558 vs 0.4917) for
 no reason, and the gap would have grown silently with any change to top_k_context.
+
+## Issuer filtering: the largest confirmed gain, on the tier I did not predict
+
+    config                       all    single-span   multi-span   p50 ret
+    base (rerank vs original)  0.4917     0.6053        0.2985      4440 ms
+    rerank per sub-question    0.4972     0.5965        0.3284      2995 ms
+    + issuer filtering         0.5359     0.6667        0.3134      3082 ms
+
+    paired, rerank-per-subq -> + filtering
+      all          +0.0387  [+0.0055, +0.0746]  p=0.985   <- excludes zero
+      single-span  +0.0702  [+0.0175, +0.1228]  p=0.996   <- excludes zero
+      multi-span   -0.0149  [-0.0522, +0.0224]  p=0.155
+
+Restricting a single-issuer sub-question to that issuer's filings is worth +0.0387 pooled,
+the largest resolved effect measured on this project.
+
+**The prediction behind it was wrong in an instructive way.** Filtering was proposed as the
+strongest lever against *multi-span* failure, on the argument that each sub-question names
+one issuer and one period. It does nothing for multi-span (-0.0149, not resolved) and
+everything for single-span (+0.0702). The mechanism is duller than the argument: most
+single-hop questions name exactly one issuer, so the filter removes roughly nine tenths of
+the corpus as distractors before ranking begins. Comparisons keep both halves competing in
+the pool regardless of how each half was retrieved, which is why the tier the argument was
+aimed at is the one it left alone.
+
+Two failed predictions in a row on the same tier — the RRF fix and this — is the useful
+pattern. Multi-span recall has not moved beyond noise under any intervention: RRF
+replacement +0.0075, per-sub-question rerank +0.0299 [-0.0373, +0.0970], filtering -0.0149.
+Whatever makes a two-document question hard is not in the ranking or selection stages,
+because changes to both have now been tried and neither moved it.
+
+### Per-sub-question reranking: not resolved, but free latency
+
++0.0299 on multi-span with [-0.0373, +0.0970] — 11 questions improved, 8 regressed, which
+is churn rather than a mechanism. The diagnosis that predicted it (33% of multi-span gold
+spans sat in the pool and were dropped by a reranker scoring against the compound original)
+was measured and correct; fixing the mismatch still did not convert those spans.
+
+What did resolve is latency: p50 retrieval 4440 ms -> 2995 ms, a 33% cut, because five
+pools of 20 are reranked separately rather than one merged pool of 60 being reranked whole.
+Worth keeping for that alone, and it costs single-span 0.0088 which is inside noise.
+
+### A silent process death, again
+
+The `--filter-by-issuer` run without per-sub-question reranking stopped at question 168 of
+202 with no traceback, no error and no exit marker — the same native-code crash seen when a
+FAISS store and a cross-encoder live in the same process. It is intermittent: the identical
+command succeeded on retry. Any long eval needs its result file checked for existence
+rather than the run being assumed to have finished.
