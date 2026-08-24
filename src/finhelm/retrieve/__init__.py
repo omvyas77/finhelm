@@ -196,10 +196,12 @@ def retrieve(
     # Sentence-window hits carry only the indexed sentence until here; window.expand
     # splices their neighbours back in. It runs last, on the selected hits only, so both
     # scorers above still see the bare sentence — see window.py.
-    # Reranking scores against the *original* question, never a sub-question: the final
-    # context has to be the passages that best answer what was actually asked. Giving each
-    # sub-question its own quota of the budget instead was tried and measured worse on
-    # every tier — see _allocate.
+    # Two rerank shapes, because which question a candidate is scored against decides what
+    # survives. The default scores everything against the original question, which is right
+    # for a single-fact query and wrong for a comparison: asked which passages best answer a
+    # string naming two facts, a cross-encoder prefers the ones vaguely about both over the
+    # one that decisively answers half. rerank_per_subquestion scores each pool against the
+    # sub-question that built it and takes a quota from each.
     if cfg.rerank and cfg.rerank_per_subquestion and len(pools) > 1:
         hits, rerank_ms = rerank_per_query(pools, queries, cfg.top_k_context,
                                            cfg.rerank_model)
