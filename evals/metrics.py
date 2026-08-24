@@ -279,6 +279,14 @@ def bootstrap_paired(a: Sequence[float], b: Sequence[float], rounds: int = 10000
         "high": deltas[int(0.975 * rounds)],
         "p_better": sum(1 for d in deltas if d > 0) / rounds,
         "n": n,
+        # Whether the interval excludes zero, decided here rather than by each caller.
+        # The boundary case is not academic: the query-prefix comparison produced
+        # [-0.0166, +0.0000] from a difference vector that was zero for 180 of 181
+        # questions, and a caller testing `low < 0 < high` reads an endpoint of exactly
+        # zero as excluding zero and reports a resolved effect where there is none.
+        # Inclusive comparisons are the correct reading — an interval touching zero is
+        # consistent with no difference.
+        "resolved": deltas[int(0.025 * rounds)] > 0 or deltas[int(0.975 * rounds)] < 0,
     }
 
 
