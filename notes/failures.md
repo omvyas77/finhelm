@@ -1317,3 +1317,36 @@ those can help a scorer that ranks the wrong thing highest.
 while the embedder, the chunk text, the fusion, the query shape and the filter all have.
 It is also worth +0.157 — the single most valuable component measured on Day 2 — which
 made it look settled rather than unexamined.
+
+## A bigger reranker does not help either — so it is not capacity
+
+Offline comparison on the 67 multi-span questions, reranking the *recorded* candidate
+pools so nothing but the scorer changes. The base model reproduces the live number exactly
+(0.3209), which validates the harness.
+
+    ceiling: gold span present in the pool     90/134 = 0.6716
+    bge-reranker-base                          43/134 = 0.3209   108 ms/pair
+    bge-reranker-large                         41/134 = 0.3060   765 ms/pair
+
+Two thirds of multi-span gold spans are already in the candidate pool. Both rerankers
+convert about half of them, and tripling the cross-encoder converts slightly fewer at seven
+times the cost. The gap between 0.32 and 0.67 is not a capacity problem, so "use a stronger
+reranker" — which the previous entry in this file recommended — is wrong.
+
+Nor is it a scoring-target problem. `rerank_per_query` scores each pool against its own
+sub-question, which removes the compound-query mismatch entirely, and reaches 0.3284: the
+best multi-span figure measured, and still half the ceiling. Even taking a quota from each
+sub-question's own filtered, reranked list leaves the gold chunk outside the top few of a
+pool drawn from the correct issuer's filings.
+
+That is the real statement of the problem, and it is narrower than anything tried so far:
+**within one issuer's filings, ranked against a sub-question naming that issuer, metric and
+period, the answer-bearing passage is not in the top few.** Every intervention to date has
+worked on which candidates are present or how they are ordered relative to each other.
+None of them changes what a candidate *is*.
+
+`chunk_tokens` has never been swept. The Day 2 ablation varied chunking *strategy* —
+fixed, semantic, sentence_window — at a fixed 800 tokens throughout, and 42% of all misses
+are "right document, wrong passage", which is the signature of chunks too coarse to
+separate one disclosure from the next. It is the only untested lever that changes the unit
+being ranked rather than the ranking.
