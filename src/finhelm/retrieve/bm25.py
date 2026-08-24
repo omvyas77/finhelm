@@ -16,6 +16,8 @@ import re
 from pathlib import Path
 
 import pandas as pd
+
+from ..chunking import DEFAULT_CHUNK_TOKENS, chunks_name
 from rank_bm25 import BM25Okapi
 
 from ..stores.base import Hit, matches
@@ -59,10 +61,12 @@ class Bm25Index:
 
 
 @functools.lru_cache(maxsize=4)
-def load_index(collection: str, strategy: str) -> Bm25Index:
+def load_index(collection: str, strategy: str,
+               chunk_tokens: int = DEFAULT_CHUNK_TOKENS) -> Bm25Index:
     """Build from the chunk parquet. ~13k docs indexes in a couple of seconds, so this is
     cached per process rather than persisted — one less artifact to keep in sync."""
-    df = pd.read_parquet(PROCESSED / f"chunks_{collection}_{strategy}.parquet")
+    df = pd.read_parquet(
+        PROCESSED / f"{chunks_name(collection, strategy, chunk_tokens)}.parquet")
     return Bm25Index(
         df["text"].tolist(),
         df.to_dict("records"),

@@ -33,6 +33,8 @@ from dataclasses import replace
 
 import pandas as pd
 
+from ..chunking import DEFAULT_CHUNK_TOKENS, chunks_name
+
 from ..stores.base import Hit
 from .bm25 import PROCESSED
 
@@ -40,7 +42,8 @@ STRATEGY = "sentence_window"
 
 
 @functools.lru_cache(maxsize=2)
-def _windows(collection: str) -> tuple[dict, dict]:
+def _windows(collection: str,
+             chunk_tokens: int = DEFAULT_CHUNK_TOKENS) -> tuple[dict, dict]:
     """(sentences by section, window span by chunk_id) for one collection.
 
     Cached per process like the BM25 index, and for the same reason: this is derived from
@@ -48,7 +51,7 @@ def _windows(collection: str) -> tuple[dict, dict]:
     sync.
     """
     df = pd.read_parquet(
-        PROCESSED / f"chunks_{collection}_{STRATEGY}.parquet",
+        PROCESSED / f"{chunks_name(collection, STRATEGY, chunk_tokens)}.parquet",
         columns=["chunk_id", "doc_id", "section", "text", "window_start", "window_end"],
     )
 

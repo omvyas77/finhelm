@@ -228,6 +228,7 @@ def main() -> None:
     # The one component never varied. Everything else in the pipeline — embedder, chunk
     # text, fusion, query shape, issuer filter — has been swapped at least once.
     ap.add_argument("--rerank-model", default=None)
+    ap.add_argument("--chunk-tokens", type=int, default=None)
     ap.add_argument("--contextual", action="store_true",
                     help="use the contextual-header index (requires *_ctx built)")
     ap.add_argument("--agentic", action="store_true",
@@ -254,6 +255,8 @@ def main() -> None:
         overrides["filter_by_issuer"] = False
     if args.rerank_model:
         overrides["rerank_model"] = args.rerank_model
+    if args.chunk_tokens:
+        overrides["chunk_tokens"] = args.chunk_tokens
     if args.rerank_per_subquestion:
         overrides["rerank_per_subquestion"] = True
     if args.no_query_prefix:
