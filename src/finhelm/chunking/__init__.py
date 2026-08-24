@@ -19,6 +19,25 @@ from nltk.tokenize import sent_tokenize
 
 _ENC = tiktoken.get_encoding("cl100k_base")
 
+# The chunk size everything before the size sweep was built at. Files produced at this
+# size keep their original unsuffixed names so no existing artifact has to be rebuilt.
+DEFAULT_CHUNK_TOKENS = 800
+
+
+def chunks_name(collection: str, strategy: str,
+                chunk_tokens: int = DEFAULT_CHUNK_TOKENS) -> str:
+    """Filename stem for a chunk parquet.
+
+    The size belongs in the name for the same reason the embedding model belongs in the
+    index name: two parquets built at different sizes are not interchangeable, and without
+    it `--chunk-tokens 400` overwrites the 800-token file that every existing index and
+    every measured result was built from. That failure is silent — the rebuild succeeds,
+    and only the next eval reveals that BM25 and the FAISS index now disagree about what
+    chunk_id means.
+    """
+    stem = f"chunks_{collection}_{strategy}"
+    return stem if chunk_tokens == DEFAULT_CHUNK_TOKENS else f"{stem}_t{chunk_tokens}"
+
 
 @dataclass(frozen=True)
 class Chunk:

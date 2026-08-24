@@ -1350,3 +1350,48 @@ fixed, semantic, sentence_window — at a fixed 800 tokens throughout, and 42% o
 are "right document, wrong passage", which is the signature of chunks too coarse to
 separate one disclosure from the next. It is the only untested lever that changes the unit
 being ranked rather than the ranking.
+
+## Chunk size: plumbing done, chunks built, index blocked on memory
+
+`chunk_tokens` has never been swept, and it is the only untested lever that changes what a
+candidate *is* rather than which candidates appear or how they are ordered.
+
+Building it first required fixing a latent overwrite. `build_chunks.py` wrote
+`chunks_{collection}_{strategy}.parquet` with no size in the name, so `--chunk-tokens 400`
+would have silently replaced the 800-token parquet that every existing index and every
+measured result was built from. The failure mode is the worst kind: the rebuild succeeds,
+and only a later eval reveals that BM25 and FAISS now disagree about what a chunk_id means.
+`chunks_name()` and `index_name()` now both carry the size, defaulting to unsuffixed at 800
+so nothing already on disk has to be rebuilt.
+
+400-token chunks are built and verified:
+
+    filings/semantic   24,650 chunks at 800 -> 35,316 at 400   (p50 191 words, max 369)
+    complaints/fixed   18,498 chunks at 800 -> 24,342 at 400
+    retrievability ceiling  1.0000 at both sizes (248/248 gold spans)
+
+The ceiling check mattered: smaller chunks risk splitting a gold span so that no single
+chunk holds a contiguous 10-word run, which would drop recall for a measurement reason
+rather than a retrieval one. It does not happen here.
+
+**The index build is blocked on host memory, not on anything in this repo.** The earlier
+bge-base build sustained 22 chunks/s; the same build now runs at roughly 3. `vm_stat`
+showed 63 MB free with heavy swap activity, and the build process's own RSS had fallen to
+about 1 MB — it had been swapped out and was thrashing. Dropping the batch size from 128 to
+32 did not help: no 2048-chunk checkpoint in 5.5 minutes either way. This is an 8 GB machine
+at the end of a long session that has loaded several embedding and cross-encoder models.
+
+Nothing here is a code fault, and the fix is not a code change: free the machine and rerun
+
+    python scripts/build_index.py --collection filings   --strategy semantic --contextual \
+        --embed-model BAAI/bge-base-en-v1.5 --chunk-tokens 400
+    python scripts/build_index.py --collection complaints --strategy fixed    --contextual \
+        --embed-model BAAI/bge-base-en-v1.5 --chunk-tokens 400
+    python evals/run_eval.py --chunking semantic --retriever hybrid --rerank --agentic \
+        --contextual --embed-model BAAI/bge-base-en-v1.5 --chunk-tokens 400 \
+        --retrieve-only --tag t400
+
+Both collections have to be rebuilt together: `_resolve_strategy` falls back to `fixed`
+when a parquet is missing, but the fallback does not change the chunk size, so a
+filings-only 400-token build leaves any complaints-routed question looking for a file that
+was never written.

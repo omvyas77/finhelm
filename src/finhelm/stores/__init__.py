@@ -16,7 +16,7 @@ DEFAULT_EMBED_MODEL = "BAAI/bge-small-en-v1.5"
 
 
 def index_name(collection: str, strategy: str, contextual: bool = False,
-               embed_model: str | None = None) -> str:
+               embed_model: str | None = None, chunk_tokens: int = 800) -> str:
     """Directory name for an index.
 
     Contextual-header indexes get their own directory rather than overwriting the plain
@@ -31,12 +31,18 @@ def index_name(collection: str, strategy: str, contextual: bool = False,
     # model keeps the bare name so every index built before this stays loadable.
     if embed_model and embed_model != DEFAULT_EMBED_MODEL:
         name += "_" + embed_model.rsplit("/", 1)[-1].replace(".", "")
+    # Chunk size likewise: an index built at 400 tokens holds different chunks under the
+    # same chunk_ids as one built at 800, so sharing a directory would silently pair
+    # BM25's idea of a chunk with FAISS's different one.
+    if chunk_tokens != 800:
+        name += f"_t{chunk_tokens}"
     return name
 
 
 @functools.lru_cache(maxsize=6)
 def load_store(collection: str, strategy: str, backend: str = "faiss",
-               contextual: bool = False, embed_model: str | None = None) -> VectorStore:
+               contextual: bool = False, embed_model: str | None = None,
+               chunk_tokens: int = 800) -> VectorStore:
     """Cached: loading a store re-parses meta.jsonl, which is 62 MB for complaints.
     Uncached, a two-collection query spent ~70s on disk I/O before embedding anything.
     maxsize=4 holds both collections for the strategy under test plus room to A/B a
@@ -45,12 +51,12 @@ def load_store(collection: str, strategy: str, backend: str = "faiss",
         from .faiss_store import FaissStore
 
         return FaissStore.load(INDEX_DIR / index_name(collection, strategy, contextual,
-                                                      embed_model))
+                                                      embed_model, chunk_tokens))
     if backend == "pgvector":
         from .pgvector_store import PgVectorStore
 
         return PgVectorStore(collection=index_name(collection, strategy, contextual,
-                                                  embed_model))
+                                                  embed_model, chunk_tokens))
     raise ValueError(f"unknown store backend: {backend}")
 
 

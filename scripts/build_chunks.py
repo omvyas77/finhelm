@@ -21,7 +21,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.finhelm.chunking import chunk  # noqa: E402
+from src.finhelm.chunking import chunk, chunks_name  # noqa: E402
 from src.finhelm.config import Config  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -66,7 +66,7 @@ def main() -> None:
                 print(f"  {name}: {i}/{len(subset)} docs -> {len(rows)} chunks", flush=True)
 
         df = pd.DataFrame(rows)
-        out = OUT_DIR / f"chunks_{name}_{args.strategy}.parquet"
+        out = OUT_DIR / f"{chunks_name(name, args.strategy, cfg.chunk_tokens)}.parquet"
         df.to_parquet(out, index=False)
 
         elapsed = time.monotonic() - started

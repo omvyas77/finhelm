@@ -17,6 +17,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from src.finhelm.chunking import chunks_name  # noqa: E402
 from src.finhelm.chunking.context import contextualize  # noqa: E402
 from src.finhelm.config import Config  # noqa: E402
 from src.finhelm.embeddings import encode, pick_device  # noqa: E402
@@ -39,14 +40,20 @@ def main() -> None:
     ap.add_argument("--strategy", required=True,
                     choices=["fixed", "semantic", "sentence_window"])
     ap.add_argument("--batch-size", type=int, default=128)
+    ap.add_argument("--chunk-tokens", type=int, default=None)
     ap.add_argument("--embed-model", default=None,
                     help="override cfg.embed_model; index dir is suffixed with its name")
     ap.add_argument("--contextual", action="store_true",
                     help="prepend issuer/form/period/section before embedding")
     args = ap.parse_args()
 
-    cfg = Config(**({"embed_model": args.embed_model} if args.embed_model else {}))
-    src = PROCESSED / f"chunks_{args.collection}_{args.strategy}.parquet"
+    overrides = {}
+    if args.embed_model:
+        overrides["embed_model"] = args.embed_model
+    if args.chunk_tokens:
+        overrides["chunk_tokens"] = args.chunk_tokens
+    cfg = Config(**overrides)
+    src = PROCESSED / f"{chunks_name(args.collection, args.strategy, cfg.chunk_tokens)}.parquet"
     df = pd.read_parquet(src)
     print(f"{src.name}: {len(df)} chunks | {cfg.embed_model} | device={pick_device()}")
 
@@ -68,7 +75,7 @@ def main() -> None:
     store.upsert(df["chunk_id"].tolist(), vectors, metadata)
 
     out = INDEX_DIR / index_name(args.collection, args.strategy, args.contextual,
-                                 cfg.embed_model)
+                                 cfg.embed_model, cfg.chunk_tokens)
     store.save(out)
     size_mb = sum(f.stat().st_size for f in out.iterdir()) / 1e6
     print(f"saved {store.count()} vectors -> {out} ({size_mb:.1f} MB)")
