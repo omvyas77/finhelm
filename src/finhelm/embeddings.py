@@ -47,7 +47,13 @@ def get_model(name: str):
 # It is not a batch-size problem, which is the natural first guess: batches of 256 and 512
 # measured 21x and 44x slower than 128 only because those runs happened later in the same
 # process, after the cache had already grown.
-MPS_FLUSH_EVERY = 8192
+# Lowered from 8192 after bge-base stalled. The window is a memory budget, not a count:
+# bge-base is 768-dim against bge-small's 384 and carries ~3x the activations, so the same
+# window holds roughly twice the allocator pressure and the decay this constant exists to
+# prevent reappears inside a single window. Measured in isolation bge-base sustains 29.4
+# chunks/s, which predicts 8192 chunks in 4.6 min; the real build passed 15 min without
+# reaching that checkpoint. Smaller windows flush more often for a negligible cost.
+MPS_FLUSH_EVERY = 2048
 
 
 def _encode_all(model, texts: list[str], batch_size: int, progress: bool) -> np.ndarray:

@@ -213,6 +213,9 @@ def main() -> None:
     # had no flag, which left it the one retrieval knob fixed at its default through all
     # 18 cells.
     ap.add_argument("--top-k-retrieve", type=int, default=None)
+    ap.add_argument("--embed-model", default=None)
+    ap.add_argument("--no-query-prefix", action="store_true",
+                    help="control arm: embed the query bare, as Day 2 did")
     ap.add_argument("--contextual", action="store_true",
                     help="use the contextual-header index (requires *_ctx built)")
     ap.add_argument("--agentic", action="store_true",
@@ -231,6 +234,10 @@ def main() -> None:
         overrides["top_k_retrieve"] = args.top_k_retrieve
     if args.contextual:
         overrides["contextual_headers"] = True
+    if args.embed_model:
+        overrides["embed_model"] = args.embed_model
+    if args.no_query_prefix:
+        overrides["query_prefix"] = False
     if args.agentic:
         overrides["agentic"] = True
     cfg = Config(**overrides)

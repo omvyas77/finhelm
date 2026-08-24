@@ -48,7 +48,7 @@ def main() -> None:
     cfg = Config(**({"embed_model": args.embed_model} if args.embed_model else {}))
     src = PROCESSED / f"chunks_{args.collection}_{args.strategy}.parquet"
     df = pd.read_parquet(src)
-    print(f"{src.name}: {len(df)} chunks | device={pick_device()}")
+    print(f"{src.name}: {len(df)} chunks | {cfg.embed_model} | device={pick_device()}")
 
     # Only the embedded text carries the header; df["text"] (and therefore the stored
     # metadata, BM25, generation and is_hit) stays exactly as chunked. See context.py.
