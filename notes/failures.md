@@ -1057,3 +1057,50 @@ Left off by default despite winning. Only `filings/semantic` and `complaints/fix
 `_ctx` index built, which covers the winning config exactly but nothing else; defaulting it
 on would make `--chunking fixed` and `--chunking sentence_window` fail on a missing index
 instead of falling back. Build the remaining `_ctx` indexes before flipping the default.
+
+## bge-base: the first change that helps the tier that was actually broken
+
+Rebuilt the contextual indexes with `BAAI/bge-base-en-v1.5` (768-dim) against
+`bge-small-en-v1.5` (384-dim), everything else held fixed.
+
+                        all      single-span   multi-span
+    bge-small, plain  0.4171       0.5439        0.2015
+    bge-small + ctx   0.4475       0.5877        0.2090
+    bge-base  + ctx   0.4558       0.5789        0.2463
+
+    ctx headers   (small -> small+ctx)  single +0.0439 [+0.0000,+0.0877] RESOLVED
+                                        multi  +0.0075 [-0.0224,+0.0373]
+    bigger model  (small+ctx -> base)   single -0.0088 [-0.0526,+0.0351]
+                                        multi  +0.0373 [+0.0075,+0.0746] RESOLVED
+    both          (plain -> base+ctx)   all    +0.0387 [+0.0028,+0.0773] RESOLVED
+
+The two interventions are complementary rather than competing, and each moves exactly the
+tier its mechanism predicts. A contextual header names issuer, form, period and section, so
+it disambiguates *which* filing a passage came from — that is a single-span problem, and it
+does nothing measurable for multi-span. A larger embedding model gives finer discrimination
+between the near-identical passages that two-document comparisons have to separate, and it
+does nothing for single-span, where the header had already resolved the ambiguity.
+
+Reporting only the pooled column would have hidden both: +0.0083 for the model swap, well
+inside noise, and the conclusion "bigger model does not help" would have been wrong.
+
+Cost is real but tolerable: p50 retrieval 3932ms -> 4440ms, and the index build is 22
+chunks/s against 90 for bge-small (19 min for filings, 25 for complaints, against ~8
+combined). bge-large was ruled out on this hardware at ~75 min for the same corpus.
+
+### MPS decay, second occurrence
+
+The first bge-base build passed 15 minutes without reaching the 8192-chunk checkpoint that
+`bge-small` clears in under a minute, on a verified-clean GPU — so this was not leftover
+state from killed processes, which had been the explanation the first time. Isolated
+throughput measurement:
+
+    bge-small  mps  90.3 chunks/s     bge-small  cpu  21.8 chunks/s
+    bge-base   mps  29.4 chunks/s     bge-base   cpu   9.0 chunks/s
+
+MPS is the correct device and bge-base is genuinely ~3x the work. But 29.4 chunks/s
+predicts 8192 in 4.6 minutes, and the real build was far past that — so decay was still
+happening *inside* a single flush window. `MPS_FLUSH_EVERY` is a memory budget rather than
+a count, and a 768-dim model puts roughly twice the allocator pressure through the same
+window. Lowering it 8192 -> 2048 held a steady 22 chunks/s across the entire 43k-chunk
+build with no collapse.
