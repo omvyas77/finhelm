@@ -47,12 +47,25 @@ class VectorStore(Protocol):
 
 
 def matches(metadata: dict, filters: dict | None) -> bool:
-    """Shared filter semantics, so every backend agrees on what a filter means."""
+    """Shared filter semantics, so every backend agrees on what a filter means.
+
+    Three forms, all declarative so that a backend which filters in its own query
+    language can express them: a scalar is equality, a list/tuple/set is membership, and
+    `{"prefix": "..."}` is a string prefix test.
+
+    The prefix form exists because `date` is stored as an ISO day ("2024-02-23") and the
+    question that needs filtering names a year. Encoding that as a predicate or a callable
+    would have been shorter here and unimplementable in SQL or Pinecone; a prefix is
+    `LIKE '2024%'` everywhere.
+    """
     if not filters:
         return True
     for field, want in filters.items():
         got = metadata.get(field)
-        if isinstance(want, (list, tuple, set)):
+        if isinstance(want, dict) and "prefix" in want:
+            if not isinstance(got, str) or not got.startswith(want["prefix"]):
+                return False
+        elif isinstance(want, (list, tuple, set)):
             if got not in want:
                 return False
         elif got != want:

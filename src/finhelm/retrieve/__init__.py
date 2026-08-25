@@ -96,23 +96,44 @@ def _resolve_strategy(collection: str, strategy: str, retriever: str,
     return FALLBACK_STRATEGY
 
 
-def _from_collection(query: str, collection: str, cfg: Config, filters: dict | None) -> list[Hit]:
-    k = cfg.top_k_retrieve
-    strategy = _resolve_strategy(collection, cfg.chunking, cfg.retriever,
-                                 cfg.contextual_headers, cfg.embed_model, cfg.chunk_tokens)
-
+def _search(query: str, collection: str, strategy: str, cfg: Config, k: int,
+            filters: dict | None) -> list[Hit]:
     if cfg.retriever == "bm25":
         return bm25.load_index(collection, strategy, cfg.chunk_tokens).search(query, k, filters)
 
     store = load_store(collection, strategy, cfg.store, cfg.contextual_headers,
                        cfg.embed_model, cfg.chunk_tokens)
-    dense_hits = dense.search(query, store, k, cfg.embed_model, filters,
-                              cfg.query_prefix)
+    dense_hits = dense.search(query, store, k, cfg.embed_model, filters, cfg.query_prefix)
     if cfg.retriever == "dense":
         return dense_hits
 
     lexical = bm25.load_index(collection, strategy, cfg.chunk_tokens).search(query, k, filters)
     return hybrid.fuse([dense_hits, lexical], k, cfg.rrf_k)
+
+
+def _from_collection(query: str, collection: str, cfg: Config, filters: dict | None) -> list[Hit]:
+    k = cfg.top_k_retrieve
+    strategy = _resolve_strategy(collection, cfg.chunking, cfg.retriever,
+                                 cfg.contextual_headers, cfg.embed_model, cfg.chunk_tokens)
+
+    hits = _search(query, collection, strategy, cfg, k, filters)
+    if not filters or len(hits) >= k:
+        return hits
+
+    # Backoff. A filter derived from the question can be wrong — an amendment, an exhibit,
+    # a fact carried in an 8-K rather than the 10-K the question names — and a filter that
+    # empties the pool costs recall that no later stage can recover. Refilling from the
+    # unfiltered ranking keeps the filtered hits in front and spends only the slots the
+    # filter could not fill, so a good filter loses nothing and a bad one degrades to the
+    # unfiltered behaviour instead of to nothing.
+    seen = {h.chunk_id for h in hits}
+    for hit in _search(query, collection, strategy, cfg, k, None):
+        if hit.chunk_id not in seen:
+            hits.append(hit)
+            seen.add(hit.chunk_id)
+        if len(hits) >= k:
+            break
+    return hits
 
 
 # Removed: per-sub-question budget allocation.

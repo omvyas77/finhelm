@@ -99,6 +99,9 @@ def _issuers(question: str) -> set[str]:
 
 
 _YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
+# "its 2024 10-K", "the 10-Q filed in 2025". Only an explicitly named form counts; a bare
+# year is not enough, because a question may mention a period without naming the document.
+_FORM_NAMED = re.compile(r"\b(10-?K|10-?Q|8-?K)\b", re.I)
 _QUARTER = re.compile(r"\bq[1-4]\b|\b(?:first|second|third|fourth) quarter\b", re.I)
 
 
@@ -196,10 +199,31 @@ def filters_for(question: str) -> dict | None:
       about would exclude the document that actually answers it. The gold spans confirm
       this: several questions about one year are answered by a filing dated the next.
     """
+    filters: dict = {}
+
     issuers = _issuers(question)
-    if len(issuers) != 1:
-        return None
-    return {"ticker": issuers.pop()}
+    if len(issuers) == 1:
+        filters["ticker"] = issuers.pop()
+
+    # Form, when the question names one. 37% of golden-set questions do, and the gold span
+    # is of that form 95% of the time, while 42% of context slots go to a different form —
+    # so this is mostly reclaiming slots the answer was never going to be in.
+    forms = {f.upper().replace("-", "") for f in _FORM_NAMED.findall(question)}
+    if len(forms) == 1:
+        canonical = {"10K": "10-K", "10Q": "10-Q", "8K": "8-K"}[forms.pop()]
+        filters["form"] = canonical
+
+    # Deliberately NOT filtering on the year, despite it being right there in the question
+    # and in the metadata. "Its 2024 10-K" is the 10-K *for* fiscal 2024, which is filed in
+    # 2025: measured on the golden set, the named year differs from the filing year 52% of
+    # the time. Widening to {YYYY, YYYY+1} still only covers 75% of gold spans, and a
+    # filter that discards a quarter of the answers is worse than no filter — the recall it
+    # costs is unrecoverable, while the precision it buys is not.
+    #
+    # This is why temporal questions remain unfixed: 88% of their gold spans are boilerplate
+    # repeated verbatim across filings, so only the year distinguishes the right copy, and
+    # the year is exactly the signal too unreliable to filter on here.
+    return filters or None
 
 
 __all__ = ["decompose", "worth_splitting", "filters_for"]
