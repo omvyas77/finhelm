@@ -16,7 +16,7 @@ from ..config import Config
 from ..stores import INDEX_DIR, index_name, load_store
 from ..stores.base import Hit
 from . import bm25, dense, hybrid, window
-from .rerank import rerank, rerank_per_query
+from .rerank import rerank, rerank_per_query, rerank_windowed
 from .router import Route, route
 
 
@@ -234,7 +234,8 @@ def retrieve(
                          sub_questions, candidates)
 
     if cfg.rerank:
-        hits, rerank_ms = rerank(query, candidates, cfg.top_k_context, cfg.rerank_model)
+        scorer = rerank_windowed if cfg.rerank_windows else rerank
+        hits, rerank_ms = scorer(query, candidates, cfg.top_k_context, cfg.rerank_model)
         return Retrieved(window.expand(hits, used), decision, rerank_ms,
                          sub_questions, candidates)
 
