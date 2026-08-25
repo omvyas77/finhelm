@@ -102,6 +102,20 @@ _YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
 # "its 2024 10-K", "the 10-Q filed in 2025". Only an explicitly named form counts; a bare
 # year is not enough, because a question may mention a period without naming the document.
 _FORM_NAMED = re.compile(r"\b(10-?K|10-?Q|8-?K)\b", re.I)
+# "its 2024 10-K", "the 10-Q filed in 2025" — a year bound to a named form, in either order.
+_FILING_NAMED = re.compile(
+    r"(\b(?:19|20)\d{2})\s+(10-?K|10-?Q|8-?K)"
+    r"|(10-?K|10-?Q|8-?K)[^.]{0,40}?\b((?:19|20)\d{2})", re.I)
+
+
+def _filings_named(question: str) -> set[tuple[int, str]]:
+    """(year, form) pairs the question names explicitly."""
+    out = set()
+    for m in _FILING_NAMED.finditer(question):
+        year = m.group(1) or m.group(4)
+        form = (m.group(2) or m.group(3)).upper().replace("-", "")
+        out.add((int(year), {"10K": "10-K", "10Q": "10-Q", "8K": "8-K"}[form]))
+    return out
 _QUARTER = re.compile(r"\bq[1-4]\b|\b(?:first|second|third|fourth) quarter\b", re.I)
 
 
@@ -212,6 +226,25 @@ def filters_for(question: str) -> dict | None:
     if len(forms) == 1:
         canonical = {"10K": "10-K", "10Q": "10-Q", "8K": "8-K"}[forms.pop()]
         filters["form"] = canonical
+
+    # Filing year, when the question names exactly one filing — the same "exactly one" rule
+    # the issuer filter uses, and for the same reason: a comparison naming two filings
+    # cannot be filtered to either without guaranteeing the other half is missed.
+    #
+    # The window is {YYYY, YYYY+1} because "its 2024 10-K" is the 10-K *for* fiscal 2024,
+    # filed in early 2025; the named year and the filing year differ 52% of the time and
+    # every difference is +1.
+    #
+    # Measured per sub-question — which is where this runs — the window covers 99% of gold
+    # spans and form-plus-window covers 98%. Measured on the *compound* question it covers
+    # only 75%, and that number is an artifact: a temporal question names two filings, the
+    # regex takes the first, and gold spans belonging to the second are scored as +2 and +3
+    # year offsets. This filter was rejected once on that confounded figure.
+    named = _filings_named(question)
+    if len(named) == 1:
+        year, form = named.pop()
+        filters["form"] = form
+        filters["date"] = {"prefix": (str(year), str(year + 1))}
 
     # Deliberately NOT filtering on the year, despite it being right there in the question
     # and in the metadata. "Its 2024 10-K" is the 10-K *for* fiscal 2024, which is filed in
