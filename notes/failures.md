@@ -1395,3 +1395,72 @@ Both collections have to be rebuilt together: `_resolve_strategy` falls back to 
 when a parquet is missing, but the fallback does not change the chunk size, so a
 filings-only 400-token build leaves any complaints-routed question looking for a file that
 was never written.
+
+## Bypass ablation, truncation, and the temporal read
+
+### 1. The reranker is not the multi-span problem; RRF fusion is
+
+Bypass = take the fused RRF order and cut at 8, no cross-encoder. Paired, same questions:
+
+    k=50 pools      rerank   bypass     delta                    p
+    single-span     0.6754   0.5877   +0.0877  [+0.0175,+0.1667] 0.006  RESOLVED
+    multi-span      0.2761   0.2910   -0.0149  [-0.0896,+0.1194] 0.581
+
+The reranker earns its keep on single-span and contributes nothing measurable on
+multi-span. Neither branch of the decision tree: it is not net-negative, it is inert there.
+
+The useful half: bypass *also* degrades from k=20 (0.3284) to k=50 (0.2910). The k=20->50
+inversion survives removing the reranker, so it is a property of RRF fusion over wider
+pools, not of scoring. Widening admits candidates that consensus-fusion then floats above
+the single-list evidence multi-span needs.
+
+### 2. A fifth of multi-span evidence is truncated before the cross-encoder sees it
+
+    query+passage pairs exceeding the 512-token window   88/200  (44%)
+    passage tokens                                        p50 356, p95 922, max 974
+
+    pooled gold spans hidden by truncation   single-span 13/92 (14%)
+                                             multi-span  22/90 (24%)
+
+The reranker is not misjudging those passages; it is scoring a prefix that does not contain
+the answer. The contextual header is *not* the cause — `hit.text` is the pristine chunk and
+the header exists only in the embedding-time text, so it costs nothing here. Chunk length is
+the cause.
+
+This re-motivates the chunk-size work on a measured mechanism rather than the granularity
+argument it was originally proposed on, which was speculative. The 400-token chunks are
+already built and ceiling-verified: max 369 words is ~480 tokens and fits the window whole.
+
+### 3. Temporal: period normalization is the wrong fix
+
+Reading ten zero-scoring temporal questions kills the "Q3 2023 vs three months ended
+September 30, 2023" hypothesis. Five of six gold spans contain **no period markers at all**:
+they are generic risk-factor prose — "Our risk management strategies may not be fully
+effective", "Our Framework is designed to identify, measure, assess". There is no period in
+the gold text to normalize against.
+
+    temporal gold spans whose exact text also appears in OTHER documents:  44/50  (88%)
+
+The question asks how a disclosure evolved between the 2024 and the 2026 10-K, and the gold
+span is boilerplate carried near-verbatim across both. No text-based retriever can pick the
+right year, because the text is identical; only the document's metadata distinguishes them,
+and is_hit requires an exact doc_id match. Retrieving the correct sentence from the wrong
+filing scores zero.
+
+The fix is therefore a **form + filing-year filter applied when the question names a filing
+explicitly** ("its 2024 10-K"), not period normalization. Note this does not contradict the
+earlier decision to never filter on date: that reasoning was about *figure* questions, where
+a 2023 number is stated in the 2024 filing's comparative column. A question naming the
+filing itself is a different case and the named year is the document's own.
+
+### Where missed spans actually sit, by type
+
+    of gold spans NOT in the final top-8    gold doc present, wrong passage | gold doc absent
+    all           129 missed                        48 (37%)                    81 (63%)
+    single_hop     38                               14 (37%)                    24 (63%)
+    multi_hop      57                               16 (28%)                    41 (72%)
+    temporal       34                               18 (53%)                    16 (47%)
+
+Multi-span is 72% *wrong document* — the passage-ranking work aimed at it has been aimed at
+the smaller half. Temporal is the mirror image and the only tier where wrong-passage
+dominates.
