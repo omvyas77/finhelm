@@ -229,6 +229,8 @@ def main() -> None:
     # text, fusion, query shape, issuer filter — has been swapped at least once.
     ap.add_argument("--rerank-model", default=None)
     ap.add_argument("--chunk-tokens", type=int, default=None)
+    ap.add_argument("--fresh", action="store_true",
+                    help="ignore any checkpoint and re-answer every question")
     ap.add_argument("--no-rerank-windows", action="store_true",
                     help="control arm: score only the prefix that fits the 512-token window")
     ap.add_argument("--contextual", action="store_true",
@@ -280,14 +282,42 @@ def main() -> None:
     print(f"{run_name}: {len(questions)} questions"
           f"{' (retrieve-only)' if args.retrieve_only else ''}")
 
+    # Checkpoint file, written one JSON line per question as the run proceeds.
+    #
+    # A generating run over the full golden set is ~35 minutes and ~$3.70, and an
+    # interruption used to lose all of it: the previous attempt died at question 113 of 202
+    # on an API credit error, wrote no result file, and the 113 answered questions had to be
+    # paid for again. Appending as we go means a rerun resumes instead of restarting, and
+    # `--fresh` forces a clean start when the config changed in a way the name does not
+    # capture.
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    partial_path = RESULTS / f"{run_name}.partial.jsonl"
+
+    done: dict[str, dict] = {}
+    if partial_path.exists() and not args.fresh:
+        with partial_path.open() as fh:
+            for line in fh:
+                if line.strip():
+                    row = json.loads(line)
+                    done[row["id"]] = row
+        if done:
+            print(f"  resuming: {len(done)} questions already answered in {partial_path.name}")
+
     records = []
-    for i, question in enumerate(questions, start=1):
-        record = evaluate_one(question, cfg, args.retrieve_only)
-        records.append(record)
-        recall = M.recall_at_k(record["retrieved"], record["gold_spans"], k)
-        flag = "-" if recall is None else f"{recall:.2f}"
-        print(f"  [{i:>3}/{len(questions)}] {record['id']} {record['type']:<12} "
-              f"recall@{k}={flag} {record['latency_ms']:>6}ms", flush=True)
+    with partial_path.open("a") as checkpoint:
+        for i, question in enumerate(questions, start=1):
+            cached = done.get(question["id"])
+            if cached is not None:
+                records.append(cached)
+                continue
+            record = evaluate_one(question, cfg, args.retrieve_only)
+            records.append(record)
+            checkpoint.write(json.dumps(record) + "\n")
+            checkpoint.flush()
+            recall = M.recall_at_k(record["retrieved"], record["gold_spans"], k)
+            flag = "-" if recall is None else f"{recall:.2f}"
+            print(f"  [{i:>3}/{len(questions)}] {record['id']} {record['type']:<12} "
+                  f"recall@{k}={flag} {record['latency_ms']:>6}ms", flush=True)
 
     summary = summarize(records, cfg, k)
 
@@ -297,12 +327,15 @@ def main() -> None:
     fallbacks = [{"collection": collection, "requested": requested, "used": used}
                  for (collection, requested), used in STRATEGY_FALLBACKS.items()]
 
-    RESULTS.mkdir(parents=True, exist_ok=True)
     path = RESULTS / f"{run_name}.json"
     path.write_text(json.dumps(
         {"run_name": run_name, "config": asdict(cfg), "summary": summary,
          "retrieve_only": args.retrieve_only,
          "strategy_fallbacks": fallbacks, "records": records}, indent=2))
+
+    # The complete result supersedes the checkpoint. Removed only after the real file is
+    # on disk, so an interruption during the write still leaves a resumable run.
+    partial_path.unlink(missing_ok=True)
 
     HISTORY.parent.mkdir(parents=True, exist_ok=True)
     with HISTORY.open("a") as fh:
