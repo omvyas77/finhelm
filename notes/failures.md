@@ -1518,3 +1518,92 @@ build now cannot reach its first 2048-chunk checkpoint in 12 minutes.
 
 The remedy is not a code change: restart the machine (or otherwise reclaim memory) and rerun.
 Everything needed is committed and the commands are recorded above.
+
+## The year filter was rejected on a confounded measurement — corrected
+
+The earlier entry rejected a filing-year filter because the year window {YYYY, YYYY+1}
+covered only 75% of gold spans. That number was measured on the **compound question**, and
+`filters_for` runs on **sub-questions**. A temporal question names two filings; the regex
+took the first; gold spans belonging to the second scored as +2 and +3 year offsets and
+looked like coverage failures.
+
+    year-window coverage measured on the compound question   75%
+    year-window coverage measured per sub-question           99%
+    form + year window, per sub-question                     98%
+
+The filter is safe and now ships, gated by the same "exactly one" rule the issuer filter
+uses: a question naming two filings gets a form filter but no year filter, because
+filtering a comparison to either side guarantees missing the other.
+
+Split of the original 25% loss, which shows what the confound was:
+
+    tier          year window ok   form ok   both
+    single-span             100%      100%   100%
+    multi-span               69%       94%    65%
+    ...by type: single_hop 100/100/100, multi_hop 88/90/80, temporal 50/98/50
+
+Temporal carried the entire loss, which is exactly the tier that names two filings.
+
+### Measured: +0.0166, not resolved
+
+    config                     all   single-span   multi-span   temporal
+    issuer filter only      0.5387      0.6667        0.3209     0.3200
+    + form + year filter    0.5552      0.6842        0.3358     0.3000
+
+    paired  all         +0.0166  [-0.0028, +0.0387]
+            multi_hop   +0.0357  [+0.0000, +0.0833]
+            temporal    -0.0200  [-0.0800, +0.0400]
+
+multi_hop carries the gain; temporal pays for it. Two filters wanting different scopes.
+
+### The temporal regression is downstream of the filter, not caused by it
+
+Of the 2 (of 25) temporal questions that regressed, **all four gold spans were inside the
+filtered pool** — none dropped. q054's two gold spans sat at pool ranks **1 and 4** and
+still missed the top-8: the reranker demoted evidence that RRF had ranked first. Filtering
+homogenises the pool, the surviving competitors are same-year near-duplicates, and the
+cross-encoder cannot separate them.
+
+### The latency doubling was not a bug
+
+3434 -> 6934 ms p50 looked like unconditional backoff. It is not: measured over 27 filtered
+questions, **backoff fires 0 times**, filtered search costs 192 ms against 173 ms
+unfiltered — an 11% overhead. The p50 difference is host state; that run executed during
+swap recovery with individual questions logging 22-29 s. Latency figures from this session
+are unreliable and should not be quoted as costs of any change.
+
+## Context budget: the sweep, and an end-to-end run cut short
+
+Reranking the recorded pools offline and cutting at each k — same information as four runs:
+
+       k      all   single    multi  temporal   d(all)   per slot
+       8   0.5552   0.6842   0.3358    0.3000
+      12   0.6409   0.7632   0.4328    0.4400  +0.0856    +0.021
+      16   0.6961   0.7982   0.5224    0.5400  +0.0552    +0.014
+      24   0.7403   0.8246   0.5970    0.6200  +0.0442    +0.0055
+      32   0.7597   0.8246   0.6493    0.6800  +0.0193    +0.0024
+
+The knee is k=16: per-slot value falls 2.5x after it, and single-span saturates by 24.
+Multi-span and temporal keep climbing, which fits the q054 finding — their evidence is
+sitting just below the cut.
+
+**The end-to-end arm did not finish.** k=8 completed; k=16 died at question 113 of 202 on
+`anthropic.BadRequestError: credit balance is too low`. No result file was written, so the
+answer-quality comparison the run existed for is unanswered. Parsing both console logs gives
+a paired retrieval comparison over the 102 shared questions:
+
+    tier          n     k=8    k=16     delta                95% CI
+    all         102  0.5931  0.7255   +0.1324   [+0.0735, +0.1961]
+    single_hop   82  0.6707  0.7805   +0.1098   [+0.0488, +0.1829]
+    multi_hop    12  0.2500  0.4167   +0.1667   [+0.0417, +0.2917]
+    temporal      8  0.3125  0.6250   +0.3125   [+0.0625, +0.5625]
+
+This corroborates the offline sweep and settles nothing that matters: recall@16 against
+recall@8 is partly definitional, and whether a 16-chunk context produces better *answers* —
+citation density, over-refusal, correctness — requires the run that did not complete.
+
+k=8 end-to-end, for whenever the k=16 arm can be repeated:
+
+    recall@8 0.5552   citation_density 0.9764   uncited_claims 1.8861
+    abstention_recall 0.8571   over_refusal_rate 0.2265
+    p50 latency 10236 ms   cost $0.0183/query

@@ -63,7 +63,10 @@ def matches(metadata: dict, filters: dict | None) -> bool:
     for field, want in filters.items():
         got = metadata.get(field)
         if isinstance(want, dict) and "prefix" in want:
-            if not isinstance(got, str) or not got.startswith(want["prefix"]):
+            prefixes = want["prefix"]
+            if isinstance(prefixes, str):
+                prefixes = (prefixes,)
+            if not isinstance(got, str) or not any(got.startswith(x) for x in prefixes):
                 return False
         elif isinstance(want, (list, tuple, set)):
             if got not in want:
