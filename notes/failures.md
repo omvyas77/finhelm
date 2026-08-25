@@ -1464,3 +1464,57 @@ filing itself is a different case and the named year is the document's own.
 Multi-span is 72% *wrong document* — the passage-ranking work aimed at it has been aimed at
 the smaller half. Temporal is the mirror image and the only tier where wrong-passage
 dominates.
+
+## Form filter with backoff — and why the year filter was not built
+
+The form filter is implemented and tested; it is **not yet measured**, because the host ran
+out of memory before an eval could complete (see below).
+
+`filters_for` now adds `form` when a question names exactly one, alongside the issuer.
+`matches()` gained a third, declarative filter form — `{"prefix": "..."}` — chosen over a
+predicate or callable because a prefix is expressible in every backend (`LIKE '2024%'`)
+while a Python callable is not. `_from_collection` backs off: if a filtered search returns
+fewer than k, it refills from the unfiltered ranking behind the filtered hits, so a wrong
+filter degrades to unfiltered behaviour rather than to an empty pool.
+
+**The year filter was measured and rejected before being written.** It is the obvious
+companion to the form filter, the question states the year, the metadata stores it — and it
+does not work:
+
+    gold spans for questions naming "YYYY <form>":            99
+      filing year == the year named in the question           48  (48%)
+      filing year in {YYYY, YYYY+1}                           74  (75%)
+      form matches                                            94  (95%)
+      form AND year window (what a combined filter keeps)     71  (72%)
+
+"Its 2024 10-K" means the 10-K *for* fiscal 2024, which is filed in early 2025: the named
+year differs from the filing year 52% of the time, and every mismatch is +1. Widening to
+{YYYY, YYYY+1} still leaves a quarter of gold spans outside the filter. Recall lost to a
+filter is unrecoverable by any later stage, while the precision it buys is not, so a filter
+that discards 25% of the answers is worse than no filter — even with backoff, which would
+be firing constantly and returning the unfiltered ranking anyway.
+
+Form alone keeps 95%, which is why it is the half that shipped.
+
+**This means temporal is still unfixed, and now known to be hard rather than merely
+unattempted.** 88% of temporal gold spans are boilerplate repeated verbatim across filings,
+so only the filing year distinguishes the right copy — and the year is precisely the signal
+too unreliable to filter on. Any fix has to come from the golden set (accept any filing
+carrying the text) or from a fiscal-period field extracted from document content rather than
+inferred from the question.
+
+## The host, not the pipeline
+
+Three long jobs failed in a row this session: the 400-token index (twice) and the form-filter
+eval. None is a code fault.
+
+    swap: 2048 MB total, 1175 MB used   ->   9216 MB total, 7660 MB used
+    free RAM 77 MB, inactive 1110 MB
+
+An 8 GB machine driven through many model loads — two embedding models, two cross-encoders,
+FAISS stores for two collections, repeated eval processes — ends the session deep in swap,
+and every subsequent job thrashes. The earlier bge-base build held 22 chunks/s; the same
+build now cannot reach its first 2048-chunk checkpoint in 12 minutes.
+
+The remedy is not a code change: restart the machine (or otherwise reclaim memory) and rerun.
+Everything needed is committed and the commands are recorded above.
