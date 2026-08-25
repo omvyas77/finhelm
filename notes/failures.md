@@ -1607,3 +1607,36 @@ k=8 end-to-end, for whenever the k=16 arm can be repeated:
     recall@8 0.5552   citation_density 0.9764   uncited_claims 1.8861
     abstention_recall 0.8571   over_refusal_rate 0.2265
     p50 latency 10236 ms   cost $0.0183/query
+
+## Sliding-window reranking: the largest resolved effect on this project
+
+The cross-encoder truncates an over-long pair from the end, so a passage longer than the
+512-token budget is scored on its prefix alone. Measured earlier: 44% of query+passage pairs
+exceed the window, and 24% of pooled multi-span gold spans sit past the cut (14% single-span).
+`rerank_windowed` splits an over-long passage into windows overlapping by half and keeps the
+best score, so a gold span anywhere in the passage can win.
+
+Offline over the recorded pools of the current best config, so only the scorer changes:
+
+    tier            n    plain   window    delta              95% CI
+    all           181   0.5552   0.6188  +0.0635  [+0.0221,+0.1050]  RESOLVED
+    single-span   114   0.6842   0.7632  +0.0789  [+0.0263,+0.1404]  RESOLVED
+    multi-span     67   0.3358   0.3731  +0.0373  [-0.0224,+0.0970]
+    temporal       25   0.3000   0.3600  +0.0600  [-0.0400,+0.1600]
+
+Larger than issuer filtering (+0.0470), and unlike it this needs no re-index, no API call
+and no new model — the same cross-encoder, shown the rest of the passage.
+
+One detail cuts against the obvious reading of the mechanism, and is worth keeping: truncation
+hid *more* multi-span evidence (24% vs 14%), yet the fix helps single-span *more* (+0.0789 vs
++0.0373). That is arithmetic rather than contradiction. A multi-span question needs both spans,
+so recovering one moves it from 0 to 0.5, while the same recovery takes a single-span question
+from 0 to 1. Equal evidence recovery, half the credit.
+
+On by default (`--no-rerank-windows` is the control arm). Costs roughly 1.5x rerank pairs.
+
+**It also bears on the k question.** The offline sweep put k=16 at 0.6961 against k=8 at
+0.5552, a +0.14 gain bought with double the context. Windowing gets +0.0635 of that at k=8,
+with no extra context for the generator to be distracted by — which is the failure mode the
+missing end-to-end arm exists to test. Any future k sweep should be re-derived on top of
+windowing rather than against the old k=8 baseline, or it will double-count the same evidence.

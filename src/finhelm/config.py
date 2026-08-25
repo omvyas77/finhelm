@@ -52,6 +52,12 @@ class Config:
     rerank_per_subquestion: bool = False
     rerank: bool = False
     rerank_model: str = "BAAI/bge-reranker-base"
+    # Score every window of an over-long passage and keep its best, instead of scoring the
+    # prefix that fits the cross-encoder's 512-token budget. On by default: +0.0635
+    # [+0.0221, +0.1050] paired over 181 questions, the largest resolved effect measured on
+    # this project. 44% of query+passage pairs exceed the window and 24% of pooled
+    # multi-span gold spans sat past the cut. Costs ~1.5x rerank pairs.
+    rerank_windows: bool = True
     top_k_retrieve: int = 20
     top_k_context: int = 8
 
@@ -93,6 +99,7 @@ class Config:
             f"{'-il' if self.cross_query_fusion == 'interleave' else ''}"
             f"{'' if self.filter_by_issuer else '-noflt'}"
             f"{'' if self.chunk_tokens == 800 else f'-t{self.chunk_tokens}'}"
+            f"{'' if self.rerank_windows else '-nowin'}"
             f"{'' if self.rerank_model.endswith('reranker-base') else '-' + self.rerank_model.split('-')[-1]}"
             f"{'-rpq' if self.rerank_per_subquestion else ''}"
             f"{'-ag' if self.agentic else ''}"

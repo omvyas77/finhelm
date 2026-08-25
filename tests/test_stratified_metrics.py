@@ -130,3 +130,19 @@ def test_a_genuine_effect_still_resolves():
     out = bootstrap_paired([0.0] * 90 + [1.0] * 91, [1.0] * 181, rounds=2000)
     assert out["resolved"] is True
     assert out["low"] > 0
+
+
+def test_passage_windows_cover_the_whole_passage():
+    """The regression this guards: a cross-encoder truncates a long pair from the end, so a
+    gold span past the 512-token budget is invisible to the reranker no matter how well it
+    scores. Measured on this corpus, that hid 24% of pooled multi-span gold spans."""
+    from src.finhelm.retrieve.rerank import _passage_windows
+
+    text = " ".join(f"word{i}" for i in range(2000))
+    windows = _passage_windows(text, "BAAI/bge-reranker-base", budget=200)
+    assert len(windows) > 1, "a passage far over budget must be split"
+    # The tail has to appear somewhere, which is the entire point.
+    assert "word1999" in windows[-1]
+    # And a short passage must pass through untouched rather than being re-tokenised.
+    short = "a short passage"
+    assert _passage_windows(short, "BAAI/bge-reranker-base", budget=200) == [short]

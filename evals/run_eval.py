@@ -229,6 +229,8 @@ def main() -> None:
     # text, fusion, query shape, issuer filter — has been swapped at least once.
     ap.add_argument("--rerank-model", default=None)
     ap.add_argument("--chunk-tokens", type=int, default=None)
+    ap.add_argument("--no-rerank-windows", action="store_true",
+                    help="control arm: score only the prefix that fits the 512-token window")
     ap.add_argument("--contextual", action="store_true",
                     help="use the contextual-header index (requires *_ctx built)")
     ap.add_argument("--agentic", action="store_true",
@@ -257,6 +259,8 @@ def main() -> None:
         overrides["rerank_model"] = args.rerank_model
     if args.chunk_tokens:
         overrides["chunk_tokens"] = args.chunk_tokens
+    if args.no_rerank_windows:
+        overrides["rerank_windows"] = False
     if args.rerank_per_subquestion:
         overrides["rerank_per_subquestion"] = True
     if args.no_query_prefix:

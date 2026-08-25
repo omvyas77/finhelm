@@ -38,6 +38,77 @@ def _model(name: str):
     return CrossEncoder(name)
 
 
+# Sliding-window scoring.
+#
+# bge-reranker-base has a 512-token window and the cross-encoder truncates the pair from the
+# end, so a passage longer than the budget is scored on its prefix alone. Measured on this
+# corpus that is not an edge case: 44% of query+passage pairs exceed 512 (passages p50 356
+# tokens, p95 922, max 974), and **24% of pooled multi-span gold spans sit past the cut** —
+# 14% for single-span. The reranker is not misjudging those passages, it is scoring text
+# that does not contain the answer.
+#
+# Windowing splits an over-long passage into overlapping spans and keeps the best score, so
+# a gold span anywhere in the passage can win. Overlap is half a window because a span
+# landing exactly on a boundary would otherwise be split across two windows and score poorly
+# in both — the failure the whole mechanism exists to remove.
+WINDOW_OVERLAP = 0.5
+
+
+@functools.lru_cache(maxsize=4)
+def _tokenizer(model_name: str):
+    from transformers import AutoTokenizer
+
+    return AutoTokenizer.from_pretrained(model_name)
+
+
+def _passage_windows(text: str, model_name: str, budget: int) -> list[str]:
+    """`text` split into overlapping spans that each fit the cross-encoder's budget."""
+    tok = _tokenizer(model_name)
+    ids = tok(text, add_special_tokens=False)["input_ids"]
+    if len(ids) <= budget:
+        return [text]
+    stride = max(1, int(budget * (1 - WINDOW_OVERLAP)))
+    out = []
+    for start in range(0, len(ids), stride):
+        piece = ids[start : start + budget]
+        if not piece:
+            break
+        out.append(tok.decode(piece))
+        if start + budget >= len(ids):
+            break
+    return out
+
+
+def rerank_windowed(query: str, hits: list[Hit], k: int,
+                    model_name: str) -> tuple[list[Hit], int]:
+    """Rerank scoring every window of an over-long passage and keeping its best.
+
+    Same contract as `rerank`. Costs one forward pass per window rather than per passage;
+    with these passage lengths that is roughly 1.5x the pairs.
+    """
+    if not hits:
+        return [], 0
+
+    started = time.monotonic()
+    tok = _tokenizer(model_name)
+    budget = 512 - len(tok(query)["input_ids"]) - 3
+
+    pairs, owner = [], []
+    for i, hit in enumerate(hits):
+        for window in _passage_windows(hit.text, model_name, budget):
+            pairs.append((query, window))
+            owner.append(i)
+
+    scores = _model(model_name).predict(pairs, show_progress_bar=False)
+    best = [float("-inf")] * len(hits)
+    for idx, score in zip(owner, scores):
+        best[idx] = max(best[idx], float(score))
+
+    ranked = sorted(zip(hits, best), key=lambda pair: pair[1], reverse=True)
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+    return [Hit(h.chunk_id, float(s), h.metadata) for h, s in ranked[:k]], elapsed_ms
+
+
 def rerank(query: str, hits: list[Hit], k: int, model_name: str) -> tuple[list[Hit], int]:
     """Rescore `hits` against the query and return the top k, plus elapsed milliseconds.
 
