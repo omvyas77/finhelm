@@ -1696,3 +1696,56 @@ candidate among several.
 it — so every run that cost money produced an empty list, while the retrieve-only branch
 (fixed earlier for exactly this reason) recorded it correctly. The same field, the same
 omission, in the branch that was not checked. Both are now threaded.
+
+## Within-collection fusion: the mechanism is real, the fix is small, and width is the lever
+
+The 21-of-48 diagnostic — gold sitting at rank <=20 in a retriever that is already running,
+in a pool built to hold 20, that never arrives — pointed at dense/BM25 fusion inside a
+collection. That is the same consensus-suppression raised early on for cross-sub-question
+fusion, which was correctly measured and closed there (quotas +0.0299, interleave +0.0075).
+The mechanism was real; it was operating one level down, where nobody had looked. The
+earlier rejection was right for the level it tested.
+
+Sweeping the RRF constant and trying max-rank, offline over one cached retrieval pass:
+
+    variant        pool recall (per-query top-20)
+    rrf_k=60           0.8026    <- production
+    rrf_k=20           0.8197
+    rrf_k=1            0.8155
+    max-rank           0.8112
+
+On the 46 gold spans found by only one retriever — the population fusion can outvote:
+
+    rrf_k=60 recovers 19/46      rrf_k=1 recovers 26/46      max-rank recovers 27/46
+
+max-rank does the right thing for the right reason and still gains only +0.0086 overall,
+because **the per-query top-20 is a fixed budget**. Recovering a single-retriever span
+displaces a consensus span that was also correct. Fusion is a reallocation, not an addition,
+which is why a diagnostic about 21 spans does not convert into 21 spans of recall.
+
+### The ceiling was never a property of the corpus
+
+    per-query k   rrf_k=60   rrf_k=20   max-rank   median pool
+             20     0.8026     0.8197     0.8112        27
+             30     0.8584     0.8712     0.8712        38
+             50     0.9056     0.9185     0.9185        64
+             80     0.9571     0.9571     0.9399       106
+            120     0.9742     0.9700     0.9657       153
+
+Widening 20 -> 50 is worth +0.103; the best fusion change at fixed width is worth +0.017.
+The 0.83 "pool ceiling" quoted throughout this project is an artifact of top_k_retrieve=20,
+not a limit of the index. At k=50 the pool holds 0.9185 of gold spans.
+
+Note rrf_k=20 beats 60 at every width <= 50, converges at 80 and inverts at 120 — the
+constant is better *at the widths in use*, not universally. Worth pinning to the width.
+
+### What this means for the earlier pool-width rejection
+
+k=50 was tested and rejected on multi-span (-0.0448). That measurement stands for the
+configuration it was made in: a reranker scoring truncated prefixes, feeding an 8-slot
+context. Windowing fixed the first and k=16/24 fixed the second, so a wider pool now feeds a
+scorer that can read its candidates and a budget that can hold them. The retest is
+well-motivated and has a concrete target: pool recall 0.8026 -> 0.9185.
+
+It is not a foregone conclusion. Pool recall is not final recall, and the whole lesson of
+this track is that evidence reaching the pool is necessary and not sufficient.
