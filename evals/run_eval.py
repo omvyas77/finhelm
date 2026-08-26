@@ -232,6 +232,10 @@ def main() -> None:
     # text, fusion, query shape, issuer filter — has been swapped at least once.
     ap.add_argument("--rerank-model", default=None)
     ap.add_argument("--chunk-tokens", type=int, default=None)
+    # Pinned to the pool width it is tuned for: rrf_k=20 beats 60 at every per-query width
+    # <= 50, converges at 80 and inverts at 120, so the constant is not universally better
+    # and must not travel without its width.
+    ap.add_argument("--rrf-k", type=int, default=None)
     ap.add_argument("--fresh", action="store_true",
                     help="ignore any checkpoint and re-answer every question")
     ap.add_argument("--no-rerank-windows", action="store_true",
@@ -264,6 +268,8 @@ def main() -> None:
         overrides["rerank_model"] = args.rerank_model
     if args.chunk_tokens:
         overrides["chunk_tokens"] = args.chunk_tokens
+    if args.rrf_k is not None:
+        overrides["rrf_k"] = args.rrf_k
     if args.no_rerank_windows:
         overrides["rerank_windows"] = False
     if args.rerank_per_subquestion:

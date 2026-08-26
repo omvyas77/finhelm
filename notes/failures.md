@@ -1749,3 +1749,63 @@ well-motivated and has a concrete target: pool recall 0.8026 -> 0.9185.
 
 It is not a foregone conclusion. Pool recall is not final recall, and the whole lesson of
 this track is that evidence reaching the pool is necessary and not sufficient.
+
+## Pool width, retested on the corrected baseline: widening still loses
+
+Windowing fixed the truncated-prefix reranker and k=16 fixed the 8-slot budget — the two
+causes blamed for the original k=50 rejection. Retested with both fixed, at rrf_k=20:
+
+    width   pool recall   final@16   conversion   median pool
+       20      0.8112      0.7124       87.8%          26
+       30      0.8798      0.6824       77.6%          40
+       50      0.9185      0.6524       71.0%          64
+
+**Final recall falls as the pool widens.** +0.107 of pool recall converts to -0.060 of final
+recall, and conversion drops 88% -> 71%. The original -0.0448 was not an artifact of the
+blind reranker; it reproduces with both causes removed.
+
+The arithmetic is simple and was there to be seen: a wider pool adds *candidates*, not
+*slots*. Every added candidate is another chance for the reranker to displace something
+correct, and the reranker converts at roughly 71-88% — well short of the rate needed for
+extra pool material to pay for the competition it creates.
+
+Truncation null, top-8 of a wide pool against top-8 of the narrow one:
+
+    width 20 vs 30   identical 30%   mean Jaccard 0.740
+    width 20 vs 50   identical 20%   mean Jaccard 0.612
+
+Unlike the k=8/k=24 comparison — which was identical on every tier — widening **reorders the
+head of the list**. It is not additive at the margin, which is exactly why its gain does not
+separate cleanly and why it can lose despite holding more evidence.
+
+### The simulation was wrong twice before it was right
+
+Deriving these numbers offline required mirroring `retrieve()` exactly, and two attempts did
+not. Validated against the real winK16 run on filings-only questions:
+
+    concatenating per-query pools                     2% exact,  75.6% overlap
+    + mirroring cross-query RRF                       2% exact,  75.7% overlap
+    + truncating each retriever's list to W first    87% exact,  97.9% overlap
+
+The error was fusing the cached top-200 lists and then cutting to 20. The real pipeline
+fetches top-20 from each retriever and fuses *those*. Fusing wide lists and truncating is
+not the same operation, and it silently produced a plausible pool that shared only three
+quarters of its members with the real one. The first two width tables computed from it were
+wrong and are superseded by the one above.
+
+The check that caught it was cheap and specific: reproduce a known run exactly before
+trusting anything derived. Set overlap alone would not have caught it — 75% looks healthy;
+the exact-order match at 2% is what exposed it.
+
+Score coverage was 87.9% of width-50 pool members, which biases against wide pools since
+unscored chunks sort last. Sized before drawing any conclusion: **0, 0 and 1 gold spans
+unscored at widths 20, 30 and 50** — at most one span of 214 affected, so the finding is not
+a coverage artifact.
+
+### Where this leaves the selection track
+
+Pool recall reaches 0.9185 at width 50 and the pipeline delivers 0.6524 of it. The ceiling
+is not the corpus and never was, but neither is it reachable by widening: the binding
+constraint is the reranker's ability to choose 16 from 64, and it gets worse as the pool
+grows. Every remaining lever on this track has to make the *scorer* better, not give it more
+to look at.

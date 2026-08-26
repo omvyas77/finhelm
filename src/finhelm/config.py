@@ -99,6 +99,7 @@ class Config:
             f"{'-il' if self.cross_query_fusion == 'interleave' else ''}"
             f"{'' if self.filter_by_issuer else '-noflt'}"
             f"{'' if self.chunk_tokens == 800 else f'-t{self.chunk_tokens}'}"
+            f"{'' if self.rrf_k == 60 else f'-rrf{self.rrf_k}'}"
             f"{'' if self.rerank_windows else '-nowin'}"
             f"{'' if self.rerank_model.endswith('reranker-base') else '-' + self.rerank_model.split('-')[-1]}"
             f"{'-rpq' if self.rerank_per_subquestion else ''}"
