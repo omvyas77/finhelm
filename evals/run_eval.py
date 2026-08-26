@@ -108,6 +108,9 @@ def evaluate_one(question: dict, cfg: Config, retrieve_only: bool) -> dict:
             "abstained": result.abstained,
             "retrieval_ms": result.retrieval_ms,
             "generation_ms": result.generation_ms,
+            # Same field the retrieve-only branch records. Its absence here meant a
+            # generating run could not answer "did decomposition fire, and on what?".
+            "sub_questions": list(result.sub_questions),
         }
 
     record["latency_ms"] = record["retrieval_ms"] + record["generation_ms"]
