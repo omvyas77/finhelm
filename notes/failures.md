@@ -1640,3 +1640,59 @@ On by default (`--no-rerank-windows` is the control arm). Costs roughly 1.5x rer
 with no extra context for the generator to be distracted by — which is the failure mode the
 missing end-to-end arm exists to test. Any future k sweep should be re-derived on top of
 windowing rather than against the old k=8 baseline, or it will double-count the same evidence.
+
+## Context budget: k=24 measured end-to-end, and the gain localised to slots 9-16
+
+Arm A (windowing, k=8) against Arm B (windowing, k=24), same config otherwise:
+
+    metric              k=8      k=24     delta
+    citation_validity   1.0000   1.0000
+    over_refusal_rate   0.2155   0.0829   -0.1326
+    abstention_recall   0.9048   0.8571   -0.0476
+    citation_density    0.9955   1.1629   +0.1675
+    uncited_claims      1.6287   2.0000   +0.3713
+    cost_usd_per_query  0.0195   0.0440   2.26x
+    recall (at own k)   0.6160   0.7597   +0.1436   <- partly definitional
+
+**The generator does not degrade under more evidence — it converts.** Of the 39 questions
+where k=24 newly put gold in context, 39 were answered and 0 refused. Refusals on
+answerable questions fell 39/181 -> 15/181. Over-refusal at 0.2155 was diagnosed as the
+binding constraint on answer quality; it was a context-budget artifact and collapsed by 62%
+without touching the generator.
+
+Truncating both arms to their top 8 gives **exactly +0.0000 on every tier**: k=24 changes
+nothing about ordering, the first 8 chunks are identical. The entire gain is slots 9-24,
+cleanly separated from the reranker and composing with windowing rather than overlapping it.
+
+Where the gain lives, from Arm B's own recorded ranking:
+
+    newly-found gold spans by slot   9-12  20 (44%)   13-16  19 (42%)
+                                    17-20   3 ( 7%)   21-24   3 ( 7%)
+
+    recall@8 0.6160   @12 0.6878   @16 0.7431   @20 0.7514   @24 0.7597
+
+87% of the recovered spans sit at rank <= 16, and k=16 would convert 35 of the 39 questions.
+The last eight slots buy +0.0166 for 50% more context.
+
+Abstention recall's 0.9048 -> 0.8571 is three questions on 21 negatives. Not measurable, and
+directionally what a less conservative generator produces — but 21 negatives is too thin to
+detect a real regression. Flagged as a blind spot, not a resolved non-issue.
+
+## Decomposition is not the problem — 100% coverage, and it changes nothing
+
+    multi-span questions decomposed                          67/67  (100%)
+      sub-question counts: 2-way 33, 3-way 21, 4-way 13
+    gold spans whose issuer some sub-question names         134/134 (100%)
+    questions where EVERY gold span is covered               67/67  (100%)
+    recall@8 for those fully-covered questions                    0.3358
+
+There is no gold span the sub-questions fail to ask for. The queries are right, the evidence
+reaches the pool, and at k=8 it still did not reach the context. Decomposition is exonerated
+as a cause, which is what makes the budget finding above the explanation rather than one
+candidate among several.
+
+**This audit was impossible until now.** `Answer.sub_questions` existed from the start and
+`generate.answer()` never populated it, and `run_eval`'s generating branch never recorded
+it — so every run that cost money produced an empty list, while the retrieve-only branch
+(fixed earlier for exactly this reason) recorded it correctly. The same field, the same
+omission, in the branch that was not checked. Both are now threaded.

@@ -140,4 +140,8 @@ def answer(
         trace_id=trace_id,
         config=cfg.run_name(),
         route_reason=found.route.reason,
+        # Carried through from retrieval. The field existed on Answer from the start and
+        # was never populated, so every generating run recorded an empty list and
+        # decomposition was untraceable in exactly the runs that cost money to produce.
+        sub_questions=list(found.sub_questions),
     )
