@@ -1809,3 +1809,40 @@ is not the corpus and never was, but neither is it reachable by widening: the bi
 constraint is the reranker's ability to choose 16 from 64, and it gets worse as the pool
 grows. Every remaining lever on this track has to make the *scorer* better, not give it more
 to look at.
+
+## Standing rule: validate derived pipelines on exact order, not set overlap
+
+Offline simulation over cached retrieval is the cheapest tool in this project — it produced
+the k sweep, the fusion sweep, the reranker comparisons and the width retest for a fraction
+of what running them would have cost. It is also the easiest place to be confidently wrong,
+because a simulation that is subtly not the pipeline still returns plausible numbers.
+
+**Any simulated or derived pipeline must reproduce a real run's output in exact order before
+its numbers are quoted.** Set-level agreement is not sensitive enough. The width simulation
+sat at 75.6% set overlap through two wrong versions — a number that reads as healthy — while
+exact-order match stayed at 2% and correctly said the pool was not the real one. Only after
+truncating each retriever's list to W before fusing did it reach 87% exact / 97.9% overlap.
+
+Cost of not having the rule: two width tables reported, both wrong, both superseded.
+Value of having it: a track was nearly closed on numbers from a pipeline that did not exist.
+
+## Oracle rerank: the scoring ceiling, and what it says about width
+
+Forcing gold-bearing chunks to the top of the pool, 16 slots:
+
+    width   actual@16   oracle@16   headroom     pool recall
+       20      0.7124      0.8112    +0.0987          0.8112
+       30      0.6824      0.8798    +0.1974          0.8798
+       50      0.6524      0.9185    +0.2661          0.9185
+
+oracle@16 equals pool recall exactly at every width — with at most two gold spans per
+question and sixteen slots, a perfect scorer captures everything the pool holds.
+
+This reframes the width result rather than confirming it. **Widening loses only because the
+scorer is weak.** A perfect scorer at width 50 delivers 0.9185, and the penalty for extra
+candidates is entirely a property of the reranker's ability to choose among them. The pool
+track is not closed on its merits; it is blocked behind scoring quality and reopens if
+scoring improves.
+
++0.0987 is available at the current width from scoring alone — larger than any single change
+this project has landed.
