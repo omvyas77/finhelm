@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from .config import Config
 from .llm import claude
 from .retrieve import retrieve
+from .telemetry import set_attributes, span
 from .stores.base import Hit
 
 SYSTEM = """You are a financial research assistant. Answer ONLY from the numbered
@@ -103,8 +104,14 @@ def answer(
     trace_id = uuid.uuid4().hex[:16]
 
     started = time.monotonic()
-    found = retrieve(question, cfg, filters, collections)
+    with span("retrieve"):
+        found = retrieve(question, cfg, filters, collections)
     retrieval_ms = int((time.monotonic() - started) * 1000)
+    set_attributes(**{"query.route": "+".join(found.route.collections),
+                      "query.agentic": cfg.agentic,
+                      "query.sub_questions": len(found.sub_questions),
+                      "retrieve.hits": len(found.hits),
+                      "retrieve.ms": retrieval_ms})
 
     if not found.hits:
         # Abstaining without calling the model keeps "retrieval found nothing" and "the
@@ -120,10 +127,16 @@ def answer(
 
     prompt = f"{build_context(found.hits)}\n\nQuestion: {question}"
     started = time.monotonic()
-    text = claude(
-        prompt, cfg.gen_model, system=SYSTEM,
-        max_tokens=cfg.max_tokens, temperature=cfg.temperature,
-    ).strip()
+    with span("generate", **{"gen.model": cfg.gen_model,
+                             "gen.sources": len(found.hits),
+                             "gen.prompt_chars": len(prompt)}) as generation:
+        text = claude(
+            prompt, cfg.gen_model, system=SYSTEM,
+            max_tokens=cfg.max_tokens, temperature=cfg.temperature,
+        ).strip()
+        if generation is not None:
+            generation.set_attribute("gen.abstained", text.startswith(ABSTAIN_PREFIX))
+            generation.set_attribute("gen.answer_chars", len(text))
     generation_ms = int((time.monotonic() - started) * 1000)
 
     used, invalid, uncited = _audit(text, len(found.hits))

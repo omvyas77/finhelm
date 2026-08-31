@@ -25,10 +25,16 @@ from pydantic import BaseModel, Field
 
 from .config import Config
 from .generate import answer
+from .telemetry import log_request, setup, span
 
 ROOT = Path(__file__).resolve().parents[2]
 RESULTS = ROOT / "evals" / "results"
 HISTORY = ROOT / "evals" / "history.jsonl"
+
+# Configured before the app is instrumented. Returns False and costs nothing when no
+# collector is set, which is the case for the eval harness and for running the service
+# standalone.
+TRACING = setup("finhelm")
 
 app = FastAPI(
     title="finhelm",
@@ -50,6 +56,15 @@ CONFIG = Config(
     contextual_headers=True, embed_model="BAAI/bge-base-en-v1.5",
     top_k_context=16,
 )
+
+
+if TRACING:
+    # Auto-instrumentation nests HTTP spans above the ask/retrieve/rerank/generate spans
+    # the pipeline emits, so a trace shows the request boundary and the stage breakdown in
+    # one waterfall rather than two disconnected trees.
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+    FastAPIInstrumentor.instrument_app(app)
 
 
 class AskRequest(BaseModel):
@@ -171,7 +186,11 @@ def eval_report() -> dict:
 
 @app.post("/ask", response_model=AskResponse)
 def ask(request: AskRequest, http_request: Request) -> AskResponse:
-    result = answer(request.question, CONFIG, request.filters, request.collections)
+    request_id = getattr(http_request.state, "request_id", None)
+    with span("ask", **{"request.id": request_id,
+                        "query.chars": len(request.question),
+                        "query.agentic": CONFIG.agentic}):
+        result = answer(request.question, CONFIG, request.filters, request.collections)
 
     citations = []
     for i, hit in enumerate(result.retrieved, start=1):
@@ -185,6 +204,20 @@ def ask(request: AskRequest, http_request: Request) -> AskResponse:
             section=meta.get("section"), url=meta.get("url"),
             score=round(float(hit.score), 4),
         ))
+
+    # One line per request, emitted whether or not a collector is listening. Chunk ids
+    # rather than chunk text — enough to reconstruct what retrieval returned for a request
+    # that went wrong, without putting filing prose in the log stream.
+    log_request(
+        request_id=request_id, trace_id=result.trace_id, config=result.config,
+        route=result.route, route_reason=result.route_reason,
+        sub_questions=len(result.sub_questions),
+        retrieved=[h.chunk_id for h in result.retrieved],
+        abstained=result.abstained, cited=len(result.cited_ids),
+        invalid_citations=result.invalid_citations or None,
+        uncited_sentences=result.uncited_sentences,
+        retrieval_ms=result.retrieval_ms, generation_ms=result.generation_ms,
+    )
 
     return AskResponse(
         answer=result.answer, abstained=result.abstained, route=result.route,
