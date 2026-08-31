@@ -1846,3 +1846,51 @@ scoring improves.
 
 +0.0987 is available at the current width from scoring alone — larger than any single change
 this project has landed.
+
+## A larger cross-encoder does not capture the scoring headroom
+
+The oracle put +0.0987 recall@16 on the table at width 20. The obvious way to spend it was
+a bigger reranker, and the earlier rejection of `bge-reranker-large` did not transfer: that
+test ran when every passage over 512 tokens was scored on a truncated prefix, so both models
+were reading partial evidence and a larger model's advantage would be muted. With windowing
+on, both read whole passages — the regime where cross-encoder capacity should matter.
+
+Measured on a Colab T4 over all 181 answerable questions, both models scored in one session
+from one pair list:
+
+    tier            n     base    large     delta               95% CI
+    all           181   0.7017   0.6934   -0.0083   [-0.0331, +0.0166]
+    single-span   114   0.7632   0.7544   -0.0088   [-0.0263, +0.0000]
+    multi-span     67   0.5970   0.5896   -0.0075   [-0.0672, +0.0522]
+
+**161 of 181 questions score identically.** Of the 20 that differ, large wins 9 and base
+wins 11. The two models are indistinguishable, and the per-tier breakdown that first looked
+like a pattern — "previously truncated" at -0.0513 — is two spans out of 39.
+
+This is a stronger negative than the earlier one: full question set, windowing on, paired
+interval, and a transfer that reproduced local scores to 0.00000 absolute difference across
+490 scores. Model scale within the bge-reranker family is not where the +0.0987 lives.
+
+### The transfer check, and what it cost to build
+
+Colab's base scores had to reproduce locally computed ones before the comparison would
+print. They matched exactly — MPS and CUDA agreed bit-for-bit, which was better than the
+1e-2 tolerance allowed for float noise across accelerators.
+
+Two things made that check meaningful rather than ceremonial. The windowing function was
+copied verbatim into the Colab script rather than reimplemented, because base and large
+tokenise differently and a boundary that drifted by one token would compare two models on
+two different views of the same passage. And `doc_id` was carried explicitly per chunk
+rather than parsed out of the chunk id: ids are `{doc_id}_{section}_{NNN}`, so recovering
+the document means guessing where the section slug starts, and `is_hit` requires an exact
+doc_id match — the first draft would have scored real hits as misses.
+
+Tooling lives in `~/Desktop/finhelm-colab/` (export, score, import, README). Gold spans
+never leave this machine; Colab sees question text and candidate chunks only.
+
+### Where the scoring headroom now stands
+
++0.0987 is still available at width 20 and still unclaimed. What is now excluded: a larger
+model of the same family, a different RRF constant (+0.017), max-rank fusion (+0.009), and
+more candidates (negative). What has not been tried is anything that changes *what the
+scorer is asked* rather than which model answers it.
