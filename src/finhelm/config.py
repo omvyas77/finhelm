@@ -6,6 +6,16 @@ table reproducible without hand-tracking what changed between runs.
 
 from dataclasses import dataclass
 
+# Vector width per embedding model. Kept as data rather than inferred by loading the model,
+# because a store needs the number to create a table before anything has been embedded.
+EMBED_DIMS = {
+    "BAAI/bge-small-en-v1.5": 384,
+    "BAAI/bge-base-en-v1.5": 768,
+    "BAAI/bge-large-en-v1.5": 1024,
+    "intfloat/e5-base-v2": 768,
+    "intfloat/e5-large-v2": 1024,
+}
+
 
 @dataclass(frozen=True)
 class Config:
@@ -17,7 +27,6 @@ class Config:
 
     # embeddings + store
     embed_model: str = "BAAI/bge-small-en-v1.5"
-    embed_dim: int = 384
     store: str = "faiss"  # faiss | pgvector
     # Prepend issuer/form/period/section to a chunk before embedding it. Off reproduces
     # the Day 2 indexes exactly; on requires an index built with it, which is why the
@@ -88,6 +97,27 @@ class Config:
     judge_model: str = "gemini-3.1-flash-lite"
     max_tokens: int = 1024
     temperature: float = 0.0
+
+    @property
+    def embed_dim(self) -> int:
+        """Vector width, derived from the model rather than stored beside it.
+
+        This was a plain field defaulting to 384 — correct for bge-small, wrong for the
+        bge-base the project now ships, and never read by anything, so the disagreement sat
+        there harmlessly. It stops being harmless the moment a store uses it: pgvector
+        needs the width in DDL, and `vector(384)` against 768-dim embeddings rejects every
+        insert. The build guide's schema has the same 384 baked in.
+
+        Unknown models raise instead of guessing. A wrong dimension produces either a hard
+        failure at insert or, if the numbers happen to line up, silent nonsense at query
+        time — and the second is much worse.
+        """
+        try:
+            return EMBED_DIMS[self.embed_model]
+        except KeyError:
+            raise ValueError(
+                f"unknown embedding width for {self.embed_model!r}; add it to EMBED_DIMS"
+            ) from None
 
     def run_name(self) -> str:
         """Deterministic MLflow run name derived from the config."""
