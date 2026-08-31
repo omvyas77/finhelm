@@ -15,6 +15,7 @@ from ..chunking import chunks_name
 from ..config import Config
 from ..stores import INDEX_DIR, index_name, load_store
 from ..stores.base import Hit
+from ..telemetry import set_attributes, span
 from . import bm25, dense, hybrid, window
 from .rerank import rerank, rerank_per_query, rerank_windowed
 from .router import Route, route
@@ -167,6 +168,13 @@ def retrieve(
         else route(query)
     )
 
+    set_attributes(**{"retrieve.route": "+".join(decision.collections),
+                      "retrieve.route_method": decision.method,
+                      "retrieve.k": cfg.top_k_retrieve,
+                      "retrieve.strategy": cfg.retriever,
+                      "retrieve.chunking": cfg.chunking,
+                      "retrieve.rrf_k": cfg.rrf_k})
+
     used = [(c, _resolve_strategy(c, cfg.chunking, cfg.retriever, cfg.contextual_headers,
                                   cfg.embed_model, cfg.chunk_tokens))
             for c in decision.collections]
@@ -228,8 +236,11 @@ def retrieve(
     # one that decisively answers half. rerank_per_subquestion scores each pool against the
     # sub-question that built it and takes a quota from each.
     if cfg.rerank and cfg.rerank_per_subquestion and len(pools) > 1:
-        hits, rerank_ms = rerank_per_query(pools, queries, cfg.top_k_context,
-                                           cfg.rerank_model)
+        with span("rerank", **{"rerank.model": cfg.rerank_model,
+                               "rerank.candidates": len(candidates),
+                               "rerank.per_subquestion": True}):
+            hits, rerank_ms = rerank_per_query(pools, queries, cfg.top_k_context,
+                                               cfg.rerank_model)
         return Retrieved(window.expand(hits, used), decision, rerank_ms,
                          sub_questions, candidates)
 
