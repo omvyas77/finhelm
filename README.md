@@ -152,19 +152,33 @@ the resolvable effect is about 0.12, and most interventions land near +0.02. An
 
 ### The CI gate
 
-Two tiers, split by cost rather than by importance:
+Three tiers, and the shape was decided by a measurement that refuted the plan:
 
 | | runs on | cost | what it gates |
 |---|---|---|---|
-| `fast` | every push | $0 | unit tests, then a real retrieval eval |
+| `fast` | every push | $0 | unit tests, including the tests covering the gate itself |
+| `eval` | pull requests | $0 | a real retrieval eval on a committed fixture |
 | `judged` | pull requests | cents | DeepEval smoke suite, regression vs baseline |
 
-The free tier runs a genuine retrieval eval, not a re-read of recorded numbers, against a
-committed 1,903-chunk fixture carved out of the real corpus (`scripts/make_ci_fixture.py`
-selects gold-bearing chunks using the metric's own `is_hit`, so the fixture cannot
-disagree with the metric that reads it). **Its floor of 0.80 against a measured 0.8667 is
-a tripwire, not a quality number** — retrieval against 1,903 chunks is far easier than
-against 24,650.
+The intent was two tiers, with the retrieval eval on every push — a gate that only
+re-reads recorded numbers gates nothing about the code in the diff. It does run a real
+eval, against a committed 1,903-chunk fixture carved out of the real corpus
+(`scripts/make_ci_fixture.py` selects gold-bearing chunks using the metric's own `is_hit`,
+so the fixture cannot disagree with the metric that reads it).
+
+It just cannot run on every push. On a 2-vCPU runner the first attempt was **cancelled at
+question 27 of 40 by a 25-minute timeout**, at 49 seconds per question against ~5 seconds
+locally — a 33-minute projection. So the eval moved to pull requests, and the every-push
+tier is what it can honestly be. What is lost: a push straight to a branch with no PR gets
+no retrieval check. What is kept: the check, when it runs, is real.
+
+Part of that cost was self-inflicted and is worth the warning. `OMP_NUM_THREADS=1` is
+required on macOS, where faiss-cpu and torch each load an OpenMP runtime into one process
+and dense retrieval segfaults. Linux wheels carry no such conflict, so importing that
+workaround into CI bought nothing and pinned the cross-encoder to one of two vCPUs.
+
+**The floor of 0.80 against a measured 0.8667 is a tripwire, not a quality number** —
+retrieval against 1,903 chunks is far easier than against 24,650.
 
 The gate is built to be unable to pass quietly:
 
