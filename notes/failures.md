@@ -2238,8 +2238,58 @@ number there is a guess about how many claims a future answer will contain.
 **The CI job timeout (30 min).** Cancelled the judged tier outright. Raised to 60.
 
 The honest summary is that correcting the gate made it slower, and both failures it then
-produced pointed at answer quality when the cause was rate limiting. The lever if 32
-minutes becomes intolerable: judge faithfulness against the passages the answer actually
-cited rather than all sixteen retrieved. That is cheaper and arguably more targeted, but
-it measures something different, so it is a deliberate change and not a knob to turn
-quietly.
+produced pointed at answer quality when the cause was rate limiting.
+
+### The cheap fix that would have gutted the gate
+
+The obvious saving is to judge faithfulness against only the passages the answer cited —
+far fewer contexts, same twelve questions. It is wrong, and the reason generalises.
+
+Faithfulness asks whether the answer is grounded in the evidence the system **was given**.
+Restricting the judge to the passages the answer **chose** turns that into
+self-consistency: a system that fabricates a claim and cites a plausible-looking passage
+passes cleanly, because the only evidence examined is the evidence the answer selected.
+
+This repo already holds the counterexample. q055 fabricates Jamie Dimon's compensation and
+cites a real 8-K cover page; it scores `citation_validity` 1.0 today, which is why it is a
+`strict=True` xfail. Under cited-only faithfulness it would very likely score well there
+too — the cited page exists, it is from the right filing, and it does not contradict the
+claim because it does not address it. The one gate capable of catching that class of
+failure would stop being able to, in a system whose entire value proposition is that it
+does not fabricate.
+
+**The rate limit is the lever, not the context count.** The floor is questions x k x 5s and
+k is the term that must not move. In order: a paid Gemini tier (60 RPM puts the suite at
+~6 minutes, the build guide's own figure, giving up nothing); a different judge model for
+the gate, since a PR check needs to be consistent and fast rather than identical to a
+final-evaluation judge; or fewer questions at full k, where 6 x 16 costs what 12 x 8 did
+and weakens coverage in a way that can be stated plainly. If none are available, sample
+contexts at **random** rather than by citation — random sampling is a weaker version of
+the same measurement, cited-only is a different measurement wearing its clothes.
+
+
+## Standing rule: anything that validates the system must be pinned to the served config
+
+Three findings now share one shape, and it is worth stating as a rule rather than
+rediscovering a fourth time.
+
+- `Answer.sub_questions` existed and was never populated, so every generating run recorded
+  an empty list and decomposition was untraceable in exactly the runs that cost money.
+- The width simulation fused cached top-200 lists and truncated, while the real pipeline
+  fetched top-20 and fused those. 75.6% set overlap looked healthy; exact-order agreement
+  was 2%.
+- The DeepEval PR gate scored a bare `Config()` — fixed, dense, no rerank, bge-small, k=8 —
+  for the life of the file. **Every quality gate this project has passed was gating a
+  configuration the service never ran.**
+
+Each looked healthy because nothing compared it against the real thing, and each produced
+plausible numbers rather than an error.
+
+**The rule.** Anything that validates the system — a smoke gate, a simulation, a benchmark,
+a fixture — must be pinned to the served config (`api.CONFIG`), not to a freshly
+constructed default. And that pinning has to be asserted somewhere the local filesystem
+cannot paper over: the gate bug survived because `data/index/filings_fixed` exists on a
+developer machine, so the wrong config loaded happily and passed. It surfaced only on a
+runner that had no such directory. `tests/test_container_config.py` is where this kind of
+assertion belongs — it already checks that the image bakes the models `api.CONFIG` names,
+for the same reason.

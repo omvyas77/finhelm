@@ -219,10 +219,28 @@ jobs:
     # minute" figure in the build guide describes a configuration nobody runs. The first
     # run after the fix was cancelled by a 30-minute limit.
     #
-    # The lever, if this becomes intolerable: judge faithfulness against the passages the
-    # answer actually cited rather than all 16 retrieved. That is cheaper and arguably
-    # more targeted, but it measures something different, so it is a deliberate change
-    # rather than a knob to turn quietly.
+    # The lever is the 12 RPM, not the 16 contexts. The floor is questions x k x 5s, and
+    # k is the term that must not move: judging faithfulness against only the passages the
+    # answer cited measures self-consistency, not groundedness. A system that fabricates a
+    # claim and cites a plausible-looking passage would pass cleanly, because the only
+    # evidence examined is the evidence the answer selected. This repo has that exact
+    # failure on file — q055 fabricates Jamie Dimon's compensation and cites a real 8-K
+    # cover page, and scores citation_validity 1.0 today. Cited-only faithfulness would
+    # likely score it well too: the cited page does not contradict the claim because it
+    # does not address it. That would retire the one gate able to catch the failure this
+    # system exists to prevent.
+    #
+    # Attack the rate instead, in this order:
+    #   1. A paid Gemini tier. At 60 RPM the same suite is ~6 minutes — the build guide's
+    #      own number — and the arithmetic collapses with nothing given up.
+    #   2. A different judge model for the gate. This is a PR check, not a published
+    #      metric; it needs to be consistent and fast, not identical to the judge used for
+    #      a final evaluation.
+    #   3. Fewer questions at full k. 6 x 16 costs what 12 x 8 did and preserves what the
+    #      metric means. It weakens coverage, but plainly and statably.
+    # If none are available, sample contexts at random rather than by citation: random
+    # sampling is a weaker version of the same measurement, cited-only is a different
+    # measurement wearing its clothes.
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -262,6 +280,9 @@ jobs:
             exit 1
           fi
 
+      # Load-bearing: the suite disables DeepEval's per-attempt timeout (see the module
+      # docstring for why a fixed number there is a guess), so nothing else bounds a hung
+      # attempt. This job's timeout above is the only backstop left.
       - name: DeepEval smoke suite
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
