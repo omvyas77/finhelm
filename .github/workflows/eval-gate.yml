@@ -227,6 +227,24 @@ jobs:
       # The generator and the judge must stay in different model families — same-family
       # judging produces self-preference bias, and Config.__post_init__ enforces it. Both
       # keys are needed or the suite cannot run at all.
+      # The suite skips itself without keys, which is right for a forked PR and wrong for
+      # a branch in this repo — a silent skip there is a gate that stopped gating. This
+      # makes the same-repo case loud.
+      - name: Require judge credentials for same-repo pull requests
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: |
+          missing=""
+          [ -z "$ANTHROPIC_API_KEY" ] && missing="$missing ANTHROPIC_API_KEY"
+          [ -z "$GOOGLE_API_KEY" ] && missing="$missing GOOGLE_API_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::judged tier cannot run without:$missing"
+            echo "set them with: gh secret set <NAME> --repo ${{ github.repository }}"
+            exit 1
+          fi
+
       - name: DeepEval smoke suite
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

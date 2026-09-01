@@ -2162,3 +2162,38 @@ Also fixed: `compare_to_baseline.py` was going to fail on every pull request. Th
 appends a retrieve-only entry to history on each push, so "the newest run" was almost
 never the generating run a generating baseline must be compared against. It now matches
 the baseline's own kind rather than hardcoding a run name that any config change breaks.
+
+### The PR quality gate was scoring a system nobody runs
+
+`tests/test_smoke_deepeval.py` built its answers with a bare `Config()` — chunking=fixed,
+retriever=dense, no reranking, bge-small, top_k_context=8. The service is pinned to
+semantic + hybrid + rerank + contextual headers + bge-base at k=16. So for the life of
+that file the DeepEval PR gate measured faithfulness and relevancy on a configuration this
+project has never shipped, and every number it produced described a different system.
+
+It passed locally the whole time, because a developer machine happens to have a
+`filings_fixed` index sitting on disk from the Day 2 ablation. It surfaced only in CI,
+where the committed fixture contains exactly two indexes and FAISS said so:
+`could not open data/ci/index/filings_fixed/index.faiss`. The environment with *fewer*
+artifacts is the one that caught it — the richer machine hid the bug by having the wrong
+index available.
+
+Fixed by importing `api.CONFIG`, the same pinned object the service and the container use.
+
+Two related things fixed alongside:
+
+- Twelve tests share two module-scoped fixtures, so one absent API key produced twelve
+  identical FAILED-fixture tracebacks with the cause buried in each. Now a single
+  module-level skip with the missing names in the reason.
+- That skip resolves keys through `llm.env()` rather than `os.getenv`, because `llm` falls
+  back to `.env` and an `os.getenv` check would have silently skipped the entire judged
+  suite on every developer machine — the exact failure the guard exists to prevent. The
+  workflow separately *fails* a same-repo PR whose secrets are unset, so the skip cannot
+  become a gate that quietly stopped gating.
+
+### CI reproduced the local number exactly
+
+Worth recording because it is the point of `--deterministic-only`: the deliberate-break
+run scored `recall_at_16 = 0.6667` on a GitHub runner, against `0.6667` measured on this
+laptop. Different OS, different CPU architecture, different thread count — same digits.
+A gate whose number moves with the machine cannot distinguish a regression from a runner.

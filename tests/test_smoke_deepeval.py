@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import functools
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -84,10 +85,10 @@ def judge_model():
     see src/finhelm/judge.py for why the budget has to be process-global.
     """
     from finhelm import llm
-    from finhelm.config import Config
+    from finhelm.api import CONFIG
     from finhelm.judge import rate_limited_gemini
 
-    return rate_limited_gemini(Config().judge_model, llm.env("GOOGLE_API_KEY"))
+    return rate_limited_gemini(CONFIG.judge_model, llm.env("GOOGLE_API_KEY"))
 
 
 @pytest.fixture(scope="module")
@@ -97,12 +98,44 @@ def answers() -> dict[str, object]:
     Per-test generation would re-answer the same question for each metric, tripling both
     the cost and the wall-clock time of the gate for no additional coverage.
     """
-    from finhelm.config import Config
+    from finhelm.api import CONFIG
     from finhelm.generate import answer
 
-    cfg = Config()
-    return {q["id"]: answer(q["question"], cfg) for q in load_smoke_set()}
+    # The *served* config, not a fresh Config().
+    #
+    # A bare Config() is chunking=fixed, retriever=dense, no reranking, bge-small and
+    # top_k_context=8 — none of which this project ships. The service is pinned to
+    # semantic + hybrid + rerank + contextual headers + bge-base at k=16, and for the life
+    # of this file the PR quality gate was scoring a system nobody runs. It surfaced only
+    # in CI, where the fixture has no `filings_fixed` index and FAISS said so; on a
+    # developer machine that index exists, so the suite passed while measuring the wrong
+    # thing.
+    return {q["id"]: answer(q["question"], CONFIG) for q in load_smoke_set()}
 
+
+# Twelve tests share two module-scoped fixtures, so an absent key produced twelve
+# identical FAILED-fixture tracebacks with the real cause buried in each. This states it
+# once. It is a skip rather than a failure because forked pull requests do not receive
+# secrets by design — but the workflow asserts the secrets exist for same-repo PRs, so an
+# unset key on a branch that should have one still fails, just not here.
+def _absent(name: str) -> bool:
+    """Resolve a key the way the application does, not just from os.environ.
+
+    llm.env() falls back to .env, so a developer machine has keys that os.getenv alone
+    cannot see. Checking only the environment would skip the entire judged suite locally
+    while reporting nothing — the precise failure this guard exists to prevent.
+    """
+    from finhelm import llm
+
+    try:
+        return not llm.env(name)
+    except RuntimeError:
+        return True
+
+
+_MISSING = [n for n in ("ANTHROPIC_API_KEY", "GOOGLE_API_KEY") if _absent(n)]
+pytestmark = pytest.mark.skipif(
+    bool(_MISSING), reason=f"judged gate needs {', '.join(_MISSING)}")
 
 SMOKE = load_smoke_set()
 POSITIVES = [q for q in SMOKE if q["type"] not in ("unanswerable", "out_of_scope")]
