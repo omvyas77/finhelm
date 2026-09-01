@@ -287,6 +287,10 @@ def main() -> None:
                     help="control arm: score only the prefix that fits the 512-token window")
     ap.add_argument("--contextual", action="store_true",
                     help="use the contextual-header index (requires *_ctx built)")
+    ap.add_argument("--agentic-filters-only", action="store_true",
+                    help="decompose to extract metadata filters, then retrieve with the "
+                         "single original query — isolates the filter half of "
+                         "decomposition from the query half")
     ap.add_argument("--agentic", action="store_true",
                     help="decompose multi-hop questions before retrieving")
     ap.add_argument("--retrieve-only", action="store_true",
@@ -339,6 +343,8 @@ def main() -> None:
         overrides["query_prefix"] = False
     if args.agentic:
         overrides["agentic"] = True
+    if args.agentic_filters_only:
+        overrides["agentic_filters_only"] = True
     # --deterministic-only is the CI name for the combination that makes no model call at
     # all. Three separate switches, because there are three separate call sites and
     # missing one degrades quietly rather than failing:

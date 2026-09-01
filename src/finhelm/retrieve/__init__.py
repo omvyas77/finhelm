@@ -112,6 +112,31 @@ def _search(query: str, collection: str, strategy: str, cfg: Config, k: int,
     return hybrid.fuse([dense_hits, lexical], k, cfg.rrf_k)
 
 
+def _union_filters(per_question) -> dict | None:
+    """Merge the filters several sub-questions imply into one filter for a single query.
+
+    A scalar that differs across sub-questions becomes a membership list, a form
+    `stores.base.matches` already defines and every backend already implements. That is
+    the only correct merge: a comparison of two issuers implies "either", never "both",
+    and intersecting them would empty the pool for exactly the questions decomposition
+    exists to serve.
+
+    Prefix filters are dropped rather than merged. `{"prefix": ("2024", "2025")}` from one
+    sub-question and `{"prefix": ("2025", "2026")}` from another have no union that is
+    both correct and expressible, and a wrong date filter costs recall that no later stage
+    recovers.
+    """
+    merged: dict[str, set] = {}
+    for filters in per_question:
+        for field, want in (filters or {}).items():
+            if isinstance(want, dict):
+                continue
+            values = want if isinstance(want, (list, tuple, set)) else [want]
+            merged.setdefault(field, set()).update(values)
+    return {field: (values.pop() if len(values) == 1 else sorted(values))
+            for field, values in merged.items()} or None
+
+
 def _from_collection(query: str, collection: str, cfg: Config, filters: dict | None) -> list[Hit]:
     k = cfg.top_k_retrieve
     strategy = _resolve_strategy(collection, cfg.chunking, cfg.retriever,
@@ -183,11 +208,20 @@ def retrieve(
     # are still filings questions, and re-routing each one would spend a model call per
     # split to re-derive the same answer.
     sub_questions: list[str] = []
+    filters_only: dict | None = None
     if cfg.agentic:
         split = decompose(query, cfg.max_sub_questions,
                           timeout_s=cfg.agent_timeout_s)
         if split != [query]:
             sub_questions = split
+    elif cfg.agentic_filters_only:
+        # The same planner call, used only for what it reveals about the filters.
+        # Retrieval still runs on the single original query, which is what isolates the
+        # filter half of decomposition's contribution from the query half.
+        split = decompose(query, cfg.max_sub_questions,
+                          timeout_s=cfg.agent_timeout_s)
+        if split != [query]:
+            filters_only = _union_filters(filters_for(q) for q in split)
 
     # The original query is always retrieved for, even when a split succeeded: fusing the
     # sub-questions *with* it means a decomposition that silently drops a facet costs
@@ -216,8 +250,12 @@ def retrieve(
                 # complaint chunks carry no ticker, so filtering them by one matches
                 # nothing and would silently empty that half of the pool rather than
                 # narrowing it.
-                implied = (filters_for(q)
-                           if (cfg.filter_by_issuer and c == "filings") else None)
+                if not (cfg.filter_by_issuer and c == "filings"):
+                    implied = None
+                elif filters_only is not None:
+                    implied = filters_only
+                else:
+                    implied = filters_for(q)
                 merged = {**(filters or {}), **(implied or {})} or None
                 per_collection.append(_from_collection(q, c, cfg, merged))
             # Fusing a single list would only overwrite each score with 1/(rrf_k + rank),
