@@ -2293,3 +2293,145 @@ developer machine, so the wrong config loaded happily and passed. It surfaced on
 runner that had no such directory. `tests/test_container_config.py` is where this kind of
 assertion belongs — it already checks that the image bakes the models `api.CONFIG` names,
 for the same reason.
+## Standing rule: verify a claim about a past run against the run, not against memory
+
+Three times now a stated conclusion has been overturned by going back to the artifact:
+
+- **The year filter** was rejected on coverage measured against the *compound* question
+  (75%) when `filters_for` actually runs on *sub-questions* (99%). Re-measured, it shipped.
+- **The fusion-order simulation** reported 75.6% set overlap, which looked healthy; exact
+  order agreement was 2%, because the simulation fused cached top-200 lists and truncated
+  while the pipeline fetched top-20 and fused those.
+- **The PR gate's config** was a bare `Config()` for the life of the file, so every quality
+  gate the project passed was gating a system it never ran.
+
+And now a fourth, of the same shape but about a *result* rather than a component: Day 4.2's
+headline experiment was described as "already done" on the strength of the Day 2 finding
+that gating *when* `decompose` fires leaves recall bit-identical. That is a different
+question from what decomposition buys over not decomposing. Checking the history settled it
+in one query: 14 of 15 full-corpus runs are `agentic=True`, and the single `agentic=False`
+run differs from the served config in five dimensions and reports recall@5. There was no
+control.
+
+**The rule.** A claim about what a previous run established gets verified against the run —
+its recorded config and its recorded metrics — and not recalled. Two adjacent findings are
+easy to conflate precisely because they are adjacent, and recollection does not preserve
+which one was measured.
+
+### What the 4.2 control actually controls for
+
+`cfg.agentic` gates exactly one call, `decompose`; routing keys off `cfg.llm_router` and is
+independent. But the delta is still not "what decomposition buys", because two other things
+ride on having sub-questions at all:
+
+1. **Cross-query RRF fusion.** With one query `len(pools) == 1` and the fusion stage is
+   skipped entirely. You cannot fuse across sub-questions that do not exist.
+2. **Per-sub-question metadata filtering.** `filters_for` runs on every entry of `queries`,
+   so with a split it fires on each sub-question. This project has already measured that
+   difference: 75% filter coverage on the compound question against 99% on sub-questions.
+
+So the honest framing of the measured delta is **decompose + cross-query fusion +
+per-sub-question filtering, versus a single query** — a broader claim than "what
+decomposition contributes", and it should be written that way rather than attributed to
+decomposition alone.
+
+Baseline note: `winK16` reports recall@16 of **0.7403 macro** and **0.7016 micro**. These
+are one run reported two ways, not two baselines — macro is the mean of per-question
+recall, micro is spans-found over spans-total, and they diverge whenever span counts are
+unequal. The comparison is macro to macro.
+
+### The three components are not symmetric, and the asymmetry biases the result
+
+Listing "decompose + cross-query fusion + per-sub-question filtering" as three components
+understates the problem, because one of them has independent evidence of being worth
+something on its own. Filter coverage going 75% -> 99% is why the year filter was
+un-rejected and shipped; it bought measurable recall by itself.
+
+So the control arm is not merely losing decomposition. It is losing a known-positive
+intervention *as well as* decomposition, and the delta is therefore **biased toward making
+decomposition look good**. If 4.2 returns +0.05, some unknown share of it is the filter,
+and reporting "decomposition is worth +0.05" would overstate it. The writeup says this
+rather than listing three components as if they were interchangeable.
+
+**The isolated number is one cheap run away.** Run `agentic=False` for retrieval but apply
+`filters_for` over the union of filters extracted from the sub-questions — decompose for
+filter extraction, do not decompose for querying. That separates "decomposition helps
+because it produces better queries" from "decomposition helps because it produces better
+filters". Retrieve-only, ~15 minutes. Not required for a result, but it is the first
+question anyone will ask if the headline delta is large, so it should be run before the
+number is quoted anywhere.
+
+### Headline convention: macro
+
+`winK16` is 0.7403 macro and 0.7016 micro, and the gap of 0.04 is larger than most effects
+this project has measured. Two write-ups quoting different figures for the same run will
+read as one of them being stale.
+
+**Macro is the headline everywhere: recall@16 = 0.7403.** Micro is reported alongside it,
+never instead of it, and always labelled. Macro is the mean of per-question recall — it
+weights every question equally, which matches how the system is judged. Micro is
+spans-found over spans-total, so it weights multi-span questions more heavily, and the two
+diverge precisely because span counts are unequal.
+
+## Standing rule (generalised): validate on exact match where one exists
+
+There is already a rule about derived pipelines above. Four instances now say it is not
+about pipelines — it is about substitutes of any kind.
+
+| the substitute | looked healthy as | failed under |
+|---|---|---|
+| filter coverage measured on the compound question | 75%, plausible | measuring at the level the code runs at: 99% |
+| the width simulation | 75.6% set overlap | exact-order match: 2% |
+| the DeepEval PR gate | passing, green | the config it scored: `Config()`, not `api.CONFIG` |
+| the one `agentic=False` run | "a control" | its recorded config: five dimensions different |
+
+In every case a plausible-looking artifact stood in for the real one, and in every case it
+survived aggregate inspection and died under exact comparison. The transfer check that
+*did* hold — Colab against local — held bit-for-bit at 0.00000 across 490 scores, and that
+is why it was trustworthy rather than merely encouraging.
+
+**Aggregate similarity is the check that has failed every time in this project. Where an
+exact comparison exists — exact order, exact config, exact score, the exact level the code
+operates at — use it, and treat aggregate agreement as evidence of nothing.**
+
+## Day 4.2: what decomposition buys, measured against a real control
+
+The control arm — `agentic=False`, everything else pinned to the served config,
+retrieve-only, all 202 questions — had never been run. Paired bootstrap over per-question
+recall@16, 10,000 rounds, delta = agentic ON minus OFF:
+
+| tier | n | delta | 95% interval | verdict |
+|---|---|---|---|---|
+| all | 181 | **+0.0773** | [+0.0387, +0.1160] | resolved |
+| single-span | 114 | +0.0088 | [+0.0000, +0.0263] | **not resolved** |
+| multi-span | 67 | **+0.1940** | [+0.1045, +0.2836] | resolved |
+
+**The prediction stated before the run held exactly, including its falsification
+condition.** Multi-span gains a fifth of a point; single-span moves +0.0088 with an
+interval touching zero and `p_better` of 0.625, which is indistinguishable from nothing.
+The named tripwire was single-span moving too, which would have meant the delta came from
+something other than the split. It did not move.
+
+`route_accuracy` is 0.9485 in both arms, to four decimals — an independent confirmation
+that the flag does not touch routing, which was the first thing checked in the source.
+
+**What the number is a claim about.** Not "decomposition is worth +0.077". Turning the flag
+off removes three things at once: decomposition, cross-query RRF fusion (with one query
+`len(pools) == 1` and the stage is skipped), and per-sub-question metadata filtering
+(`filters_for` runs over every entry of `queries`).
+
+The three are **not symmetric**, and the asymmetry biases the result in decomposition's
+favour. Filter coverage measured 75% on the compound question against 99% on
+sub-questions, and that difference is why the year filter was un-rejected and shipped — it
+is a known-positive intervention with independent evidence, and the control arm loses it
+too. So some unknown share of +0.0773 is the filter, and the honest statement is
+**"decomposition, cross-query fusion and per-sub-question filtering together are worth
++0.077 macro, and +0.194 on multi-span"**.
+
+**Isolating it is one run away and the machinery is built.** `--agentic-filters-only`
+decomposes to extract filters, unions them (a disagreement becomes a membership list,
+since two issuers imply *either*, never both; prefix filters are dropped because two date
+ranges have no union that is correct and expressible), then retrieves with the single
+original query. Retrieve-only, ~30 minutes. That arm separates "better queries" from
+"better filters" and should be run before +0.077 is quoted as decomposition's contribution
+anywhere.

@@ -81,6 +81,19 @@ class Config:
     # which collapses — half this golden set reaches the LLM path.
     llm_router: bool = True
     agentic: bool = False
+    # Decompose to extract *filters* only, then retrieve with the single original query.
+    #
+    # Exists to make one number attributable. Turning agentic off removes three things at
+    # once — decomposition, cross-query RRF fusion, and per-sub-question metadata
+    # filtering — and the third is not neutral: filter coverage measured 75% on a compound
+    # question against 99% on sub-questions, and that difference is why the year filter was
+    # un-rejected and shipped. So an agentic on/off delta is biased toward making
+    # decomposition look good by an amount that includes a known-positive intervention.
+    #
+    # This arm keeps the better filters and drops the better queries, which separates
+    # "decomposition helps because it produces better queries" from "decomposition helps
+    # because it produces better filters".
+    agentic_filters_only: bool = False
     max_sub_questions: int = 4
     agent_timeout_s: int = 30
 

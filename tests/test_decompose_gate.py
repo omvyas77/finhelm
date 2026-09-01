@@ -128,3 +128,55 @@ def test_retrieve_hands_the_configured_timeout_to_the_planner(monkeypatch):
     R.retrieve("anything at all", Config(agentic=True, agent_timeout_s=12,
                                          max_sub_questions=3))
     assert seen == {"timeout_s": 12, "cap": 3}
+
+
+# ------------------------------------------------- isolating filters from queries
+
+def test_union_filters_turns_a_disagreement_into_membership():
+    """Two sub-questions naming different issuers imply "either", never "both".
+    Intersecting them would empty the pool for exactly the comparison questions
+    decomposition exists to serve."""
+    from finhelm.retrieve import _union_filters
+
+    assert _union_filters([{"ticker": "COF"}, {"ticker": "SYF"}]) == {
+        "ticker": ["COF", "SYF"]}
+
+
+def test_union_filters_keeps_a_scalar_when_they_agree():
+    from finhelm.retrieve import _union_filters
+
+    assert _union_filters([{"ticker": "COF"}, {"ticker": "COF"}]) == {"ticker": "COF"}
+
+
+def test_union_filters_drops_prefix_filters():
+    """{"prefix": ("2024","2025")} and {"prefix": ("2025","2026")} have no union that is
+    both correct and expressible, and a wrong date filter costs recall nothing recovers."""
+    from finhelm.retrieve import _union_filters
+
+    assert _union_filters([{"ticker": "COF", "date": {"prefix": "2024"}}]) == {
+        "ticker": "COF"}
+
+
+def test_filters_only_arm_retrieves_one_query_but_keeps_the_split_filters(monkeypatch):
+    """The whole point of the arm: better filters, single query."""
+    import finhelm.retrieve as R
+    from finhelm.config import Config
+
+    monkeypatch.setattr(R, "decompose", lambda q, cap=4, timeout_s=None: [
+        "What did COF report?", "What did SYF report?"])
+    monkeypatch.setattr(R, "filters_for",
+                        lambda q: {"ticker": "COF"} if "COF" in q else {"ticker": "SYF"})
+    monkeypatch.setattr(R, "route", lambda q, use_llm=True: R.Route(["filings"], "t", ""))
+
+    seen = []
+
+    def fake_from_collection(q, c, cfg, merged):
+        seen.append((q, merged))
+        return []
+
+    monkeypatch.setattr(R, "_from_collection", fake_from_collection)
+    R.retrieve("compare COF and SYF", Config(agentic_filters_only=True,
+                                             filter_by_issuer=True))
+    assert len(seen) == 1, "retrieval must run on the single original query"
+    assert seen[0][0] == "compare COF and SYF"
+    assert seen[0][1] == {"ticker": ["COF", "SYF"]}
