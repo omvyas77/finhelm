@@ -206,7 +206,24 @@ jobs:
     if: github.event_name == 'pull_request'
     needs: fast
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 60, and the number is a consequence of a bug fix rather than of slow hardware.
+    #
+    # judge.py paces the judge at 12 RPM to stay inside the Gemini free tier — one call
+    # every five seconds, globally, since the quota is per project per model.
+    # ContextualRelevancyMetric judges every retrieved context, so the floor is
+    # questions x k calls: 12 x 8 = 96 (~8 min) under the bare Config() this suite used
+    # to score, and 12 x 16 = 192 (~16 min) under the config the service actually serves.
+    # Faithfulness claims push the measured total to ~32 minutes.
+    #
+    # So correcting the gate to score the shipped config doubled its cost, and the "~6
+    # minute" figure in the build guide describes a configuration nobody runs. The first
+    # run after the fix was cancelled by a 30-minute limit.
+    #
+    # The lever, if this becomes intolerable: judge faithfulness against the passages the
+    # answer actually cited rather than all 16 retrieved. That is cheaper and arguably
+    # more targeted, but it measures something different, so it is a deliberate change
+    # rather than a knob to turn quietly.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 

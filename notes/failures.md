@@ -2197,3 +2197,49 @@ Worth recording because it is the point of `--deterministic-only`: the deliberat
 run scored `recall_at_16 = 0.6667` on a GitHub runner, against `0.6667` measured on this
 laptop. Different OS, different CPU architecture, different thread count — same digits.
 A gate whose number moves with the machine cannot distinguish a regression from a runner.
+
+## Day 4: the judged gate was scoring a config the project never ships
+
+`tests/test_smoke_deepeval.py` built its answers with a bare `Config()` —
+`fixed` chunking, dense retrieval, no reranking, bge-small, `top_k_context=8`. The service
+is pinned to semantic + hybrid + rerank + contextual headers + bge-base at k=16. For the
+life of that file the PR quality gate scored a system nobody runs, and every faithfulness
+and relevancy number it produced described that other system.
+
+It could only surface in CI. On a developer machine `data/index/filings_fixed` exists, so
+the suite loaded it and passed; on a runner the committed fixture has only the served
+config's index, and FAISS said `could not open .../filings_fixed/index.faiss`. The gate had
+been green for the wrong reason, and the thing that exposed it was an environment that
+happened not to contain the artifact the wrong config wanted.
+
+### Fixing it doubled the gate's cost, and broke it twice more
+
+`ContextualRelevancyMetric` judges every retrieved context, and `judge.py` paces the judge
+at 12 RPM to stay inside the Gemini free tier — one call every five seconds, globally,
+because the quota is per project per model. So the floor is questions x k:
+
+| config scored | k | paced calls | floor |
+|---|---|---|---|
+| bare `Config()` (what it used to score) | 8 | 96 | ~8 min |
+| `api.CONFIG` (what ships) | 16 | 192 | ~16 min |
+
+Faithfulness claims push the measured total to **31m36s**. The build guide budgets "~6
+min · a few cents" for this tier, and that number describes the k=8 config.
+
+Two separate timeouts then fired, and both produced misleading failures:
+
+**DeepEval's per-attempt timeout (207 s).** Four `test_answer_is_grounded` cases failed
+with `asyncio.exceptions.CancelledError` and no metric score anywhere — which reads
+exactly like four unfaithful answers. They were never scored. A single test case needs
+well over forty paced calls, so it passes 200 seconds before any judging is slow; it is
+merely spaced out. Now disabled at the top of the module rather than raised, because any
+number there is a guess about how many claims a future answer will contain.
+
+**The CI job timeout (30 min).** Cancelled the judged tier outright. Raised to 60.
+
+The honest summary is that correcting the gate made it slower, and both failures it then
+produced pointed at answer quality when the cause was rate limiting. The lever if 32
+minutes becomes intolerable: judge faithfulness against the passages the answer actually
+cited rather than all sixteen retrieved. That is cheaper and arguably more targeted, but
+it measures something different, so it is a deliberate change and not a knob to turn
+quietly.
