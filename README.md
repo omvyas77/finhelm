@@ -8,10 +8,12 @@ statements and CFPB consumer complaints, and every passage is shown to the reade
 link to the source document. When the retrieved passages don't contain the answer, the
 system says so instead of guessing.
 
-> **Status: Days 1–3 of 5 complete.** The service, the observability, the container stack
-> and the CI gate all run and are verified. Not yet done: the consumer-complaint analytics
-> module, a public deployment, and the final full evaluation. Sections below say so where
-> it matters. There is no live demo link yet because nothing is deployed.
+> **Status: Days 1–3 of 5 complete.** The service, the observability, the five-service
+> container stack, the CI gate and the Kubernetes manifests all run and are verified
+> against the real thing. Not yet done: the consumer-complaint analytics module, a public
+> deployment, and the final full evaluation. **There is no live demo link, because nothing
+> is deployed** — the Cloud Run and Space configs are written and unexecuted, and they say
+> so. Sections below flag what is measured against what is merely written.
 
 ---
 
@@ -224,8 +226,34 @@ no `WHERE` clause, so it over-fetches and post-filters; at 0.1% selectivity it r
 **0 results where 26 matching rows exist**, silently. Postgres applies the predicate in
 the query.
 
-Still to build: the k8s manifests (`deploy/k8s/` is a placeholder), incremental
-re-indexing as new filings land, and a cache keyed on question + config.
+**Kubernetes manifests are in [`deploy/k8s/`](deploy/k8s/)** — Deployment, Service, HPA,
+ConfigMap, Secret, PVC and PDB, validated against a local `kind` cluster and torn down.
+They are not what runs the demo. For single-user traffic a cluster is unjustified cost and
+operational overhead; they exist so the scaling path is concrete rather than hypothetical.
+
+What that validation actually established, and one thing it did not: all seven manifests
+were accepted by a real API server, the Deployment reached `Available 1/1`, the PVC bound,
+`securityContext` applied as `uid=10001` non-root, and the Service's EndpointSlice
+selected the pod. The container itself was **not** exercised there — the image is 5.76 GB
+and was never pushed to a registry, so the structural check ran on `busybox`. The compose
+stack is what verifies the real container end to end.
+
+The finding worth keeping is a silent one. `ReadOnlyMany` is correct for production, since
+every replica reads the same immutable index; kind's default StorageClass cannot serve it,
+and the failure gives you nothing to go on — the PVC stays `Pending` reporting only
+"waiting for first consumer", pods stay `Pending`, and **no event on either object ever
+mentions the access mode.** Changing that one field to `ReadWriteOnce` bound it in six
+seconds.
+
+**Cloud Run and Hugging Face Space configs** are in [`deploy/cloudrun/`](deploy/cloudrun/)
+and [`deploy/hf-space/`](deploy/hf-space/) — and **neither is deployed.** There is no GCP
+project or Space yet, so no live URL exists and the cold-start figures in those READMEs
+are derived from local measurement rather than observed. The named risk is that a 5.76 GB
+image is large for scale-to-zero; if cold pulls prove too slow, the honest fixes are a
+serving-only image without the eval harness, or paying for `minScale: 1`.
+
+Still to build: incremental re-indexing as new filings land, and a cache keyed on
+question + config.
 
 ---
 
