@@ -29,6 +29,25 @@ from __future__ import annotations
 import functools
 import json
 import os
+
+# DeepEval cancels a test case after DEEPEVAL_PER_ATTEMPT_TIMEOUT_SECONDS_OVERRIDE
+# (207s by default) and this suite cannot finish one inside that, for a reason that is
+# pure arithmetic rather than bad luck.
+#
+# judge.py paces the judge at 12 RPM to stay inside the Gemini free tier — one call every
+# five seconds, globally, because the quota is per project per model. The served config
+# hands the generator 16 passages, and a faithfulness check scores claims against every
+# one of them, so a single test case needs well over forty paced calls: past 200 seconds
+# before any judging is slow, merely spaced out.
+#
+# The failure that produces is maximally misleading: four `test_answer_is_grounded`
+# failures with asyncio CancelledError tracebacks and no metric score anywhere, which
+# reads exactly like the answers being unfaithful. They were not scored at all.
+#
+# Disabled rather than raised, because any number here is a guess about how many claims a
+# future answer will contain. The real bounds are pytest's own and the CI job timeout,
+# both of which fail loudly and say what they are.
+os.environ.setdefault("DEEPEVAL_PER_ATTEMPT_TIMEOUT_SECONDS_OVERRIDE", "None")
 from pathlib import Path
 
 import pytest
