@@ -2131,3 +2131,34 @@ may well never have hit it. What is true is narrower and worth keeping: it appea
 when torch runs on CPU, which is what CI does and what a Mac does not. `OMP_NUM_THREADS=1`
 stays in the workflow — it is harmless, and on a 2-vCPU runner capping thread contention
 is the right default anyway — but it is insurance, not a fix for a confirmed CI failure.
+
+### The gate, calibrated and proven red
+
+Floor calibrated at **0.80** against a measured **0.8667** on the committed fixture, from
+a finished 40-question run. Two questions of headroom: the run is deterministic, so
+identical code gives an identical number, but one question flipping is worth ~1/30 and a
+floor that trips on that is a floor nobody keeps.
+
+`--fail-on-fallback` was too strict as first written and could never have passed.
+`complaints` exists only as `fixed` **by design** — complaint narratives are a few hundred
+words and already close to one chunk, so re-chunking them tests nothing — and the check
+fired on that intended substitution. Now `--allow-fallback complaints` names the exception
+explicitly, which keeps the check sharp for the case it exists for: filings falling back,
+meaning the index the config names is missing.
+
+Proof it fails, same command with the context budget cut from 16 to 2:
+
+| config | recall@16 | multi-span | single-span | gate |
+|---|---|---|---|---|
+| top_k_context=16 | 0.8667 | 0.8125 | 0.9286 | exit 0 |
+| top_k_context=2 | 0.6667 | 0.4375 | 0.9286 | exit 1 |
+
+The pattern matters more than the failure. Single-span recall is *identical* and
+multi-span nearly halves — exactly what cutting the context budget should do, since only
+questions needing several passages can be hurt by having fewer slots. A gate that went red
+without that signature would be responding to something other than the break.
+
+Also fixed: `compare_to_baseline.py` was going to fail on every pull request. The CI gate
+appends a retrieve-only entry to history on each push, so "the newest run" was almost
+never the generating run a generating baseline must be compared against. It now matches
+the baseline's own kind rather than hardcoding a run name that any config change breaks.

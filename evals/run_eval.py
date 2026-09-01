@@ -307,6 +307,9 @@ def main() -> None:
     ap.add_argument("--fail-on-fallback", action="store_true",
                     help="exit 1 if any collection ran under a chunking strategy other "
                          "than the one requested")
+    ap.add_argument("--allow-fallback", action="append", default=[], metavar="COLLECTION",
+                    help="a collection whose fallback is intended and should not fail "
+                         "--fail-on-fallback. Repeatable.")
     args = ap.parse_args()
 
     overrides = {"chunking": args.chunking, "retriever": args.retriever, "rerank": args.rerank}
@@ -475,8 +478,16 @@ def main() -> None:
     # behaviour for a gate. Point the CI config at an index that is not there — change the
     # embedding model, rename a strategy — and the run silently measures a different
     # system, clears its threshold, and reports green.
-    if args.fail_on_fallback and fallbacks:
+    # `complaints` is the standing exception and has to be named, not assumed. It exists
+    # only as `fixed` on purpose — complaint narratives are a few hundred words and are
+    # already close to one chunk, so re-chunking them tests nothing — which means a bare
+    # --fail-on-fallback can never pass. Requiring the exception to be spelled out keeps
+    # the check sharp for the case it is actually for: filings falling back, which means
+    # the index the config names is missing and the gate is measuring something else.
+    if args.fail_on_fallback:
         for fallback in fallbacks:
+            if fallback["collection"] in args.allow_fallback:
+                continue
             failures.append(
                 f"{fallback['collection']} has no '{fallback['requested']}' index and ran "
                 f"as '{fallback['used']}'; the gate would be measuring a different system")

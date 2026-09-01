@@ -46,7 +46,16 @@ TRACKED = {
 }
 
 
-def latest(run_name_prefix: str | None) -> dict:
+def latest(run_name_prefix: str | None, retrieve_only: bool | None = None) -> dict:
+    """Newest history entry, optionally restricted to comparable runs.
+
+    The `retrieve_only` filter is not a convenience. The CI gate appends a retrieve-only
+    entry to history on every push, so "the newest run" is almost never the generating run
+    a generating baseline should be compared against — and a retrieve-only run has no
+    citation_validity and no abstention numbers, so half the table would be comparing a
+    measurement against nothing. Matching the baseline's own kind picks the right row
+    without hardcoding a run name that any config change would invalidate.
+    """
     if not HISTORY.exists():
         raise SystemExit(f"{HISTORY} does not exist; nothing to compare")
     rows = [json.loads(l) for l in HISTORY.read_text().splitlines() if l.strip()]
@@ -54,6 +63,12 @@ def latest(run_name_prefix: str | None) -> dict:
         rows = [r for r in rows if r.get("run_name", "").startswith(run_name_prefix)]
         if not rows:
             raise SystemExit(f"no run in history starting with {run_name_prefix!r}")
+    if retrieve_only is not None:
+        rows = [r for r in rows if bool(r.get("retrieve_only")) == bool(retrieve_only)]
+        if not rows:
+            kind = "retrieve-only" if retrieve_only else "generating"
+            raise SystemExit(
+                f"no {kind} run in history to compare against a {kind} baseline")
     if not rows:
         raise SystemExit("history is empty")
     return rows[-1]
@@ -99,8 +114,12 @@ def main() -> None:
                     help="write the current run to the baseline file and exit")
     args = ap.parse_args()
 
-    run = latest(args.run_name)
     baseline_path = Path(args.baseline)
+    # Read the baseline first so the run can be selected to match its kind.
+    base_kind = None
+    if baseline_path.exists() and not args.update:
+        base_kind = bool(json.loads(baseline_path.read_text()).get("retrieve_only"))
+    run = latest(args.run_name, base_kind)
 
     if args.update:
         payload = {"run_name": run.get("run_name"),
