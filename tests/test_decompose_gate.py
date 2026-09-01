@@ -72,3 +72,59 @@ def test_gate_fails_toward_not_splitting():
     guessing: a missed split costs the Day 2 behaviour, an unnecessary one costs latency
     on every question forever."""
     assert not worth_splitting("Tell me about the thing in the document")
+
+
+# --------------------------------------------------------------- the timeout
+
+def test_decompose_passes_its_timeout_to_the_model_call(monkeypatch):
+    """Config.agent_timeout_s existed from Day 1, was logged into every history row, and
+    was read by nothing. The planner therefore ran under the SDK's ten-minute default,
+    which on the request path means a hung call holds an /ask open for ten minutes before
+    failing open."""
+    import finhelm.agent.decompose as D
+
+    seen = {}
+
+    def fake_claude(prompt, model, system=None, max_tokens=1024, temperature=0.0,
+                    timeout=None):
+        seen["timeout"] = timeout
+        return '{"sub_questions": ["a about X", "b about Y"]}'
+
+    monkeypatch.setattr(D, "claude", fake_claude)
+    D.decompose("How do JPM and COF differ on commercial real estate risk?",
+                timeout_s=7.5)
+    assert seen["timeout"] == 7.5
+
+
+def test_a_planner_timeout_falls_back_to_the_original_question(monkeypatch):
+    """Failing open is the whole contract: a planner outage must cost ranking, never the
+    answer. Every exception path returns something retrievable."""
+    import finhelm.agent.decompose as D
+
+    def raises(*a, **k):
+        raise TimeoutError("planner took too long")
+
+    monkeypatch.setattr(D, "claude", raises)
+    question = "How do JPM and COF differ on commercial real estate risk?"
+    assert D.decompose(question, timeout_s=1) == [question]
+
+
+def test_retrieve_hands_the_configured_timeout_to_the_planner(monkeypatch):
+    """The knob is only real if the caller actually threads it."""
+    import finhelm.retrieve as R
+
+    seen = {}
+
+    def fake_decompose(question, max_sub_questions=4, timeout_s=None):
+        seen["timeout_s"] = timeout_s
+        seen["cap"] = max_sub_questions
+        return [question]
+
+    monkeypatch.setattr(R, "decompose", fake_decompose)
+    monkeypatch.setattr(R, "route", lambda q, use_llm=True: R.Route(["filings"], "test", ""))
+    monkeypatch.setattr(R, "_from_collection", lambda *a, **k: [])
+
+    from finhelm.config import Config
+    R.retrieve("anything at all", Config(agentic=True, agent_timeout_s=12,
+                                         max_sub_questions=3))
+    assert seen == {"timeout_s": 12, "cap": 3}

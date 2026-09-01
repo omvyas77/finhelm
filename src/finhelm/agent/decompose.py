@@ -167,17 +167,23 @@ def _parse(reply: str, limit: int) -> list[str]:
 
 
 def decompose(question: str, max_sub_questions: int = 4,
-              model: str = ROUTER_MODEL) -> list[str]:
+              model: str = ROUTER_MODEL, timeout_s: float | None = None) -> list[str]:
     """Return sub-questions, or [question] when splitting is unnecessary or fails.
 
     The return value always includes something retrievable, so callers never need to
     handle an empty list.
+
+    `timeout_s` is the hard cap the build guide asks for, and it was missing: Config had
+    carried `agent_timeout_s = 30` since Day 1, every history row logged it, and nothing
+    read it. The planner therefore inherited the SDK's ten-minute default, so a hung call
+    here would have held an /ask open for ten minutes before failing open to [question].
     """
     if not worth_splitting(question):
         return [question]
 
     try:
-        reply = claude(question, model, system=SYSTEM, max_tokens=512, temperature=0.0)
+        reply = claude(question, model, system=SYSTEM, max_tokens=512,
+                       temperature=0.0, timeout=timeout_s)
     except Exception:
         return [question]
 

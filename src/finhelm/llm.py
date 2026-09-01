@@ -82,7 +82,14 @@ def claude(
     system: str | None = None,
     max_tokens: int = 1024,
     temperature: float = 0.0,
+    timeout: float | None = None,
 ) -> str:
+    """`timeout` is seconds for this one request.
+
+    The SDK's default is ten minutes, which is a reasonable default for a batch job and a
+    terrible one for a call sitting in a request path — a hung planner would hold an /ask
+    open far past any sane client timeout. Callers on the request path pass their own.
+    """
     kwargs = {
         "model": model,
         "max_tokens": max_tokens,
@@ -94,6 +101,8 @@ def claude(
         # other, and a sampling model would put noise in every delta.
         "extra_body": {"temperature": temperature},
     }
+    if timeout is not None:
+        kwargs["timeout"] = timeout
     if system:
         kwargs["system"] = system
     response = _anthropic().messages.create(**kwargs)

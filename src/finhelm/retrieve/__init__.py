@@ -184,7 +184,8 @@ def retrieve(
     # split to re-derive the same answer.
     sub_questions: list[str] = []
     if cfg.agentic:
-        split = decompose(query, cfg.max_sub_questions)
+        split = decompose(query, cfg.max_sub_questions,
+                          timeout_s=cfg.agent_timeout_s)
         if split != [query]:
             sub_questions = split
 
@@ -194,23 +195,47 @@ def retrieve(
     queries = [query, *sub_questions]
 
     pools = []
-    for q in queries:
-        per_collection = []
-        for c in decision.collections:
-            # A sub-question's issuer filter applies only where the field exists. CFPB
-            # complaint chunks carry no ticker, so filtering them by one matches nothing
-            # and would silently empty that half of the pool rather than narrowing it.
-            implied = filters_for(q) if (cfg.filter_by_issuer and c == "filings") else None
-            merged = {**(filters or {}), **(implied or {})} or None
-            per_collection.append(_from_collection(q, c, cfg, merged))
-        # Fusing a single list would only overwrite each score with 1/(rrf_k + rank),
-        # throwing away the cosine or BM25 value for no gain. Keep the real scores —
-        # Day 2 needs them to tell a confident hit from a barely-above-noise one.
-        # Across collections it is the opposite: `filings` and `complaints` are separate
-        # indexes whose scores are not on a comparable scale, so rank fusion is the only
-        # defensible way to interleave them.
-        pools.append(per_collection[0] if len(per_collection) == 1
-                     else hybrid.fuse(per_collection, cfg.top_k_retrieve, cfg.rrf_k))
+    for index, q in enumerate(queries):
+        # One span per sub-question, not one attribute listing them all.
+        #
+        # A decomposed query's whole story is which half found what, and an attribute on
+        # the parent cannot show that: it collapses four retrievals of very different
+        # cost and yield into one bar. Separate spans put the sub-questions side by side
+        # in the waterfall, which is where "this half retrieved nothing" becomes visible
+        # rather than inferable.
+        #
+        # index 0 is always the original question — it is retrieved for alongside the
+        # split so that a decomposition which drops a facet costs ranking, not evidence.
+        with span("subquery", **{"subquery.index": index,
+                                 "subquery.is_original": index == 0,
+                                 "subquery.text": q[:200],
+                                 "subquery.collections": "+".join(decision.collections)}) as sub:
+            per_collection = []
+            for c in decision.collections:
+                # A sub-question's issuer filter applies only where the field exists. CFPB
+                # complaint chunks carry no ticker, so filtering them by one matches
+                # nothing and would silently empty that half of the pool rather than
+                # narrowing it.
+                implied = (filters_for(q)
+                           if (cfg.filter_by_issuer and c == "filings") else None)
+                merged = {**(filters or {}), **(implied or {})} or None
+                per_collection.append(_from_collection(q, c, cfg, merged))
+            # Fusing a single list would only overwrite each score with 1/(rrf_k + rank),
+            # throwing away the cosine or BM25 value for no gain. Keep the real scores —
+            # Day 2 needs them to tell a confident hit from a barely-above-noise one.
+            # Across collections it is the opposite: `filings` and `complaints` are separate
+            # indexes whose scores are not on a comparable scale, so rank fusion is the only
+            # defensible way to interleave them.
+            pool = (per_collection[0] if len(per_collection) == 1
+                    else hybrid.fuse(per_collection, cfg.top_k_retrieve, cfg.rrf_k))
+            if sub is not None:
+                sub.set_attribute("subquery.hits", len(pool))
+                # The score of the best thing this sub-question found. A sub-question that
+                # returns twenty weak hits and one that returns twenty strong ones are the
+                # same bar without it.
+                sub.set_attribute("subquery.top_score",
+                                  round(float(pool[0].score), 4) if pool else 0.0)
+            pools.append(pool)
 
     # Candidates are assembled at full width first. When reranking is on, the cross-encoder
     # needs the whole pool to work with — truncating to top_k_context before reranking
