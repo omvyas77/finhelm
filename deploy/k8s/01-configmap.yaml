@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: finhelm-config
+  namespace: finhelm
+data:
+  # Non-secret wiring only. Anything here is readable by anyone with get on ConfigMaps,
+  # so the API keys live in the Secret alongside it and never here.
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger-collector.observability:4317"
+  OTEL_SERVICE_NAME: "finhelm-api"
+  # 4317 is OTLP/gRPC and 4318 is OTLP/HTTP. telemetry.py picks the exporter from the
+  # port, so pointing this at the wrong one is a silent no-op rather than an error.
+  FINHELM_DATA_DIR: "/data"
+  # faiss-cpu and torch each ship an OpenMP runtime. Left to spin up one thread pool each
+  # they collide and dense retrieval segfaults. Also the right default on a 2-core request.
+  OMP_NUM_THREADS: "1"
+  FINHELM_DEVICE: "cpu"
+  HF_HOME: "/opt/hf"
+  HF_HUB_OFFLINE: "1"

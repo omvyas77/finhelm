@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: finhelm-api
+  namespace: finhelm
+  labels:
+    app: finhelm
+    component: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: finhelm
+      component: api
+  template:
+    metadata:
+      labels:
+        app: finhelm
+        component: api
+    spec:
+      securityContext:
+        # Matches the uid the image creates. Set here as well as in the Dockerfile because
+        # a cluster policy that overrides the image's USER would otherwise run this as root
+        # without anything failing.
+        runAsUser: 10001
+        runAsGroup: 10001
+        runAsNonRoot: true
+        fsGroup: 10001
+      containers:
+        - name: api
+          image: finhelm:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: finhelm-config
+            - secretRef:
+                name: finhelm-secrets
+          volumeMounts:
+            - name: index
+              mountPath: /data
+              readOnly: true
+          resources:
+            requests:
+              # Measured, not guessed: a single /ask peaks at 2.694 GiB with both models
+              # resident plus the index and its metadata. Requesting less than the real
+              # working set is how you get a pod that passes its probes and then gets
+              # OOMKilled on the first real question.
+              memory: "3Gi"
+              cpu: "1"
+            limits:
+              memory: "4Gi"
+              cpu: "2"
+          # Three probes doing three different jobs.
+          #
+          # startup: model load is ~20 s cold and the index mmap adds more. Without this,
+          # the liveness probe starts counting during startup and restarts the pod in a
+          # loop that looks like a crash and is actually a slow boot. 30 x 10s = 5 minutes
+          # of grace, after which liveness takes over.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 30
+          # liveness: is the process wedged. Deliberately NOT gated on index presence — a
+          # missing volume is not something a restart fixes, and restarting on it turns a
+          # misconfiguration into a crashloop that hides the real cause.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          # readiness: should this pod get traffic. This one IS gated on the index, via
+          # the 200-with-status-degraded that /health returns when it is missing. A pod
+          # that answers every question with an abstention should be out of the Service's
+          # endpoints, not silently serving.
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - |
+                  import json, sys, urllib.request
+                  r = json.load(urllib.request.urlopen("http://127.0.0.1:8000/health", timeout=5))
+                  sys.exit(0 if r.get("status") == "ok" else 1)
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: index
+          persistentVolumeClaim:
+            claimName: finhelm-index
+            readOnly: true
