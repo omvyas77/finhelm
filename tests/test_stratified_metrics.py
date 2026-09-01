@@ -136,7 +136,7 @@ def test_passage_windows_cover_the_whole_passage():
     """The regression this guards: a cross-encoder truncates a long pair from the end, so a
     gold span past the 512-token budget is invisible to the reranker no matter how well it
     scores. Measured on this corpus, that hid 24% of pooled multi-span gold spans."""
-    from src.finhelm.retrieve.rerank import _passage_windows
+    from finhelm.retrieve.rerank import _passage_windows
 
     text = " ".join(f"word{i}" for i in range(2000))
     windows = _passage_windows(text, "BAAI/bge-reranker-base", budget=200)

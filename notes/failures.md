@@ -2030,3 +2030,82 @@ this project's filters do not currently reach.
 Agreement between the backends on the real filters: exact-order 0.941, set overlap 0.992.
 Both are reported, and the order figure is the one that means anything — HNSW is
 approximate and owes the flat index a close ordering, not an identical one.
+
+## Day 3.6: the gate, and three ways today went wrong
+
+### The CI gate cannot use the real corpus, and the spec's version gates nothing
+
+`--fail-under recall_at_5=0.75` names a metric this system does not produce. It serves
+top-k=16 and `summarize` writes `recall_at_16`; `recall_at_5` is simply absent from the
+dict. A lenient implementation looks it up, finds nothing, and passes — forever, on every
+push, while the workflow file continues to read exactly like a gate. `enforce()` therefore
+treats an unknown metric name as a *failure* and prints the metrics that do exist. Same
+for a metric present but None: a retrieve-only run has no `citation_validity`, and
+"no evidence of failure" is not "passed".
+
+Three more things the gate had to be taught, each because the codebase's normal
+behaviour is to degrade quietly rather than stop:
+
+- **`--fail-on-fallback`.** `_resolve_strategy` substitutes `fixed` for a missing index
+  and records it. Correct for an ablation over a corpus chunked one way; wrong for a gate,
+  where it means the run measured a different system and passed.
+- **`--deterministic-only` verifies itself.** It forces retrieve-only, the heuristic
+  router and `agentic=False`, then asserts `llm.USAGE` is empty. Arranging the flags is
+  not the same as being free: `agent.decompose` calls the model and catches *every*
+  exception, so a keyless run does not fail, it silently stops splitting multi-hop
+  questions and reports a number that looks real.
+- **The LLM router fires on 100 of 202 questions.** So "deterministic" required
+  `llm_router=False`, where the heuristic fans out to both collections. That is a superset
+  of what the model would choose, so recall can only be understated — safe for a recall
+  gate, and not safe for `route_accuracy`, which collapses.
+
+### The fixture: 2 chunks/s, not one minute
+
+CI has no corpus (192 MB) and no index (961 MB), both gitignored. `scripts/make_ci_fixture.py`
+carves out every chunk holding a gold span for a stratified 40-question subset plus 1,800
+distractors — 1,903 chunks, 1.4 MB — selecting them with `metrics.is_hit` itself rather
+than a lookalike, so the fixture cannot disagree with the metric that reads it.
+
+The plan was to build the index in CI. Measured: **581 s for 1,131 chunks, 2 chunks/s** on
+CPU. That is ~16 minutes for the fixture on a machine with more cores than a runner, and
+caching only defers it to the next eviction. So the index is committed too — 9.3 MB, with
+`data/ci` laid out as a data directory (`processed/` beside `index/`) so `FINHELM_DATA_DIR`
+points straight at it. **The estimate of "about a minute" came from counting chunks and
+not measuring throughput.**
+
+### faiss + torch on CPU is a segfault, and only CI would have hit it
+
+Every dense retrieval died with **SIGSEGV (exit 139)** once the run was pointed at CPU.
+Not memory — it reproduced with 3 GB free. Bisected: BM25 alone exit 0, every dense path
+139. `faiss-cpu` and torch each carry their own OpenMP runtime and the two thread pools
+collide when FAISS is loaded before torch encodes, which is the order `_search` uses.
+
+It never appeared in this project's whole history because a Mac defaults to MPS, where
+torch starts no OpenMP pool. **It is a bug that exists only on the machines CI runs on.**
+`KMP_DUPLICATE_LIB_OK=TRUE` does not help; `OMP_NUM_THREADS=1` does. Pinned in the
+workflow.
+
+### Two self-inflicted ones worth writing down
+
+**A `--help` loop destroyed 127 golden questions.** Checking that every script imported
+cleanly, `for f in scripts/*.py; do python "$f" --help; done` — and four scripts have no
+argparse, so `--help` was not a flag they parse, it was just an argument they ignored
+while running normally. `assemble_golden.py` reassembled the golden set from its 75-question
+sources and overwrote the 202-question file. git had it. Nothing else warned, and nothing
+would have: the file is data, the script is idempotent by design, and the loop looked
+read-only. `assemble_golden.py` now refuses to shrink the file without `--force`.
+
+**`FINHELM_DATA_DIR` reached nothing.** `scripts/build_index.py` defined its own
+`PROCESSED` and `INDEX_DIR` instead of importing them, so a run aimed at the 1,900-chunk
+fixture spent seventeen minutes embedding the real 24,650-chunk corpus and was on its way
+to overwriting the real index when it was caught. Paths now live in `src/finhelm/paths.py`
+and the script prints which corpus it is reading — the override being invisible is what
+let it run that long.
+
+### Not finished
+
+The floor in `.github/workflows/eval-gate.yml` is the literal string `CALIBRATE_ME`. The
+calibration run died at question 24 of 40 and a floor has to come from a finished run
+against this exact fixture; the full-corpus 0.7403 describes 24,650 chunks and would be a
+threshold that looks measured and is not. `--fail-under` rejects a non-numeric value, so
+the workflow fails loudly rather than quietly not gating.

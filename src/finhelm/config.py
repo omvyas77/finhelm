@@ -71,6 +71,15 @@ class Config:
     top_k_context: int = 8
 
     # agentic
+    # Whether the router may fall back to an LLM call when its keyword heuristic finds no
+    # signal. On by default because that is the served behaviour; off for CI, where the
+    # gate has to be free, offline and deterministic.
+    #
+    # Turning it off is safe for a recall gate specifically: with no signal the router
+    # fans out to *both* collections, which is a superset of whatever the model would
+    # have chosen, so recall can only be understated. It is not safe for route_accuracy,
+    # which collapses — half this golden set reaches the LLM path.
+    llm_router: bool = True
     agentic: bool = False
     max_sub_questions: int = 4
     agent_timeout_s: int = 30

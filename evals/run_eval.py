@@ -28,12 +28,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "src"))
 
 from evals import metrics as M  # noqa: E402
-from src.finhelm import llm  # noqa: E402
-from src.finhelm.config import Config  # noqa: E402
-from src.finhelm.generate import answer  # noqa: E402
-from src.finhelm.retrieve import STRATEGY_FALLBACKS, retrieve  # noqa: E402
+from finhelm import llm  # noqa: E402
+from finhelm.config import Config  # noqa: E402
+from finhelm.generate import answer  # noqa: E402
+from finhelm.retrieve import STRATEGY_FALLBACKS, retrieve  # noqa: E402
 
 GOLDEN = ROOT / "evals" / "golden_set.jsonl"
 RESULTS = ROOT / "evals" / "results"
@@ -134,6 +135,50 @@ def _percentiles(values: list[float], prefix: str) -> dict:
         f"p95_{prefix}_ms": (statistics.quantiles(values, n=100)[94]
                              if len(values) > 1 else float(values[0])),
     }
+
+
+def enforce(summary: dict, specs: list[str]) -> list[str]:
+    """Check `METRIC=VALUE` thresholds against a finished summary.
+
+    An unknown metric name is a failure rather than a silent pass, and that is the whole
+    point of this function. The spec's gate is `--fail-under recall_at_5=0.75`; this
+    system serves and measures recall@16, so `recall_at_5` is simply not a key in the
+    summary. A dict lookup with a default would have made that gate green forever while
+    reading, in the workflow file, exactly like a gate. A threshold you cannot fail is
+    indistinguishable from no threshold at all.
+
+    Likewise a metric present but None — recall on a run with no gold spans, citation
+    validity on a retrieve-only run — is a failure. It means the gate did not measure
+    what it claims to measure.
+    """
+    failures = []
+    for spec in specs:
+        name, _, raw = spec.partition("=")
+        name = name.strip()
+        if not _ or not raw.strip():
+            failures.append(f"{spec!r} is not METRIC=VALUE")
+            continue
+        try:
+            floor = float(raw)
+        except ValueError:
+            failures.append(f"{spec!r}: {raw!r} is not a number")
+            continue
+
+        if name not in summary:
+            available = ", ".join(sorted(k for k, v in summary.items()
+                                         if isinstance(v, (int, float))))
+            failures.append(
+                f"{name} is not a metric this run produced, so the threshold could "
+                f"never fail.\n      available: {available}")
+            continue
+
+        value = summary[name]
+        if value is None:
+            failures.append(f"{name} was not measured on this run (None), "
+                            f"so >= {floor} cannot be checked")
+        elif value < floor:
+            failures.append(f"{name} = {value:.4f} is below the floor of {floor:.4f}")
+    return failures
 
 
 def summarize(records: list[dict], cfg: Config, k: int) -> dict:
@@ -249,6 +294,19 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=None, help="first N questions (smoke test)")
     ap.add_argument("--golden", default=str(GOLDEN))
     ap.add_argument("--tag", default="", help="suffix for the run name and result file")
+    ap.add_argument("--no-llm-router", action="store_true",
+                    help="never call the model to route; the keyword heuristic fans out "
+                         "to both collections when it finds no signal")
+    ap.add_argument("--deterministic-only", action="store_true",
+                    help="no model call anywhere in the run: retrieve-only, heuristic "
+                         "router, decomposition off. Verified afterwards against "
+                         "llm.USAGE rather than assumed. What the every-push CI tier runs.")
+    ap.add_argument("--fail-under", action="append", default=[], metavar="METRIC=VALUE",
+                    help="exit 1 if METRIC is below VALUE. Repeatable. An unknown metric "
+                         "name is itself a failure, not a pass.")
+    ap.add_argument("--fail-on-fallback", action="store_true",
+                    help="exit 1 if any collection ran under a chunking strategy other "
+                         "than the one requested")
     args = ap.parse_args()
 
     overrides = {"chunking": args.chunking, "retriever": args.retriever, "rerank": args.rerank}
@@ -278,6 +336,27 @@ def main() -> None:
         overrides["query_prefix"] = False
     if args.agentic:
         overrides["agentic"] = True
+    # --deterministic-only is the CI name for the combination that makes no model call at
+    # all. Three separate switches, because there are three separate call sites and
+    # missing one degrades quietly rather than failing:
+    #
+    #   generation  - skipped by retrieve_only
+    #   routing     - the heuristic fans out to both collections instead of asking
+    #   decomposition - agent.decompose calls the model and catches every exception,
+    #                 returning [question]. Without a key it therefore does not error; it
+    #                 silently stops splitting multi-hop questions, and the gate measures
+    #                 a system with decomposition switched off while reporting a number
+    #                 that looks like the real one.
+    #
+    # The consequence is stated rather than hidden: this tier does not exercise
+    # decomposition. Its job is to notice a change to chunking, fusion, filtering or
+    # reranking, on every push, for free. The judged tier covers the agentic path.
+    if args.deterministic_only:
+        args.retrieve_only = True
+        args.no_llm_router = True
+        overrides["agentic"] = False
+    if args.no_llm_router:
+        overrides["llm_router"] = False
     cfg = Config(**overrides)
     # The generator is handed cfg.top_k_context chunks, so that is the k recall must be
     # measured at unless the caller says otherwise.
@@ -372,6 +451,43 @@ def main() -> None:
               f"ran as '{fallback['used']}'")
 
     print(f"\nwrote {path}")
+
+    # After the result file, history line and MLflow run are all written, never before:
+    # a failing gate is exactly when someone needs the artifact to see *why* it failed,
+    # and CI uploads evals/results/ on failure.
+    failures = enforce(summary, args.fail_under)
+
+    # The claim "this tier is free" checked against what actually happened, not against
+    # the flags that were meant to arrange it. Every model call in this codebase appends
+    # to llm.USAGE, so one assertion covers routing, decomposition, generation and
+    # anything added later — a new call site on the retrieval path fails the cheap tier
+    # loudly instead of quietly putting API spend on every push.
+    if args.deterministic_only and llm.USAGE:
+        models = sorted({record.get("model", "?") for record in llm.USAGE})
+        failures.append(
+            f"--deterministic-only made {len(llm.USAGE)} model call(s) to {models}; "
+            f"the run cost ${llm.cost_usd(llm.USAGE):.4f} and is neither free nor "
+            f"reproducible")
+
+    # A missing index is not an error anywhere else in this codebase: _resolve_strategy
+    # substitutes `fixed` and records the substitution, which is the right behaviour for
+    # an ablation over a corpus that was only ever chunked one way. It is the wrong
+    # behaviour for a gate. Point the CI config at an index that is not there — change the
+    # embedding model, rename a strategy — and the run silently measures a different
+    # system, clears its threshold, and reports green.
+    if args.fail_on_fallback and fallbacks:
+        for fallback in fallbacks:
+            failures.append(
+                f"{fallback['collection']} has no '{fallback['requested']}' index and ran "
+                f"as '{fallback['used']}'; the gate would be measuring a different system")
+
+    if failures:
+        print("\nGATE FAILED")
+        for failure in failures:
+            print(f"  x {failure}")
+        raise SystemExit(1)
+    if args.fail_under:
+        print(f"\ngate passed: {len(args.fail_under)} threshold(s) met")
 
 
 if __name__ == "__main__":

@@ -148,11 +148,12 @@ RUN mkdir -p /app/data && chown finhelm:finhelm /app/data
 
 USER finhelm
 
-# Proves the lockfile closure is complete, as the non-root user, with the Hub fenced off.
-# `pip install --no-deps` trusts requirements.txt to already list every transitive
-# dependency; this is what checks that rather than assuming it, and it covers the imports
-# the weights stage does not — faiss's OpenMP linkage, streamlit, the FastAPI graph.
-# Model loading stays lazy, so this costs about a second and downloads nothing.
+# The whole application graph, imported as the non-root user with the Hub fenced off.
+# torch arrives here via --no-deps from a separate index, so this is what confirms the
+# requirements install actually put back everything torch needs — and it covers what the
+# weights stage cannot: faiss's OpenMP linkage, streamlit, the FastAPI app, and whether
+# uid 10001 can read the files COPY placed. Model loading stays lazy, so it costs about a
+# second and downloads nothing.
 RUN python -c "import faiss, pandas, rank_bm25, streamlit, uvicorn; \
 import finhelm.api, finhelm.generate, finhelm.retrieve, finhelm.telemetry; \
 print('import closure OK:', finhelm.api.CONFIG.run_name())"

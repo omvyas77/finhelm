@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-from src.finhelm import telemetry as T
+from finhelm import telemetry as T
 
 
 def test_no_endpoint_means_no_tracing(monkeypatch):

@@ -16,8 +16,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.finhelm.config import Config  # noqa: E402
+from finhelm.config import Config  # noqa: E402
 
 
 def main() -> None:
@@ -43,7 +44,7 @@ def main() -> None:
     collections = [args.collection] if args.collection else None
 
     if args.retrieve_only:
-        from src.finhelm.retrieve import retrieve
+        from finhelm.retrieve import retrieve
 
         found = retrieve(args.question, cfg, filters, collections)
         print(f"route: {'+'.join(found.route.collections)} "
@@ -55,7 +56,7 @@ def main() -> None:
             print(f"     {hit.text[:200].strip()}...\n")
         return
 
-    from src.finhelm.generate import answer
+    from finhelm.generate import answer
 
     result = answer(args.question, cfg, filters, collections)
 

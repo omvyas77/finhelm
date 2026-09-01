@@ -83,9 +83,9 @@ def judge_model():
     Constructing a model per test would give each its own limiter and defeat the pacing —
     see src/finhelm/judge.py for why the budget has to be process-global.
     """
-    from src.finhelm import llm
-    from src.finhelm.config import Config
-    from src.finhelm.judge import rate_limited_gemini
+    from finhelm import llm
+    from finhelm.config import Config
+    from finhelm.judge import rate_limited_gemini
 
     return rate_limited_gemini(Config().judge_model, llm.env("GOOGLE_API_KEY"))
 
@@ -97,8 +97,8 @@ def answers() -> dict[str, object]:
     Per-test generation would re-answer the same question for each metric, tripling both
     the cost and the wall-clock time of the gate for no additional coverage.
     """
-    from src.finhelm.config import Config
-    from src.finhelm.generate import answer
+    from finhelm.config import Config
+    from finhelm.generate import answer
 
     cfg = Config()
     return {q["id"]: answer(q["question"], cfg) for q in load_smoke_set()}

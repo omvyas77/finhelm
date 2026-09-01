@@ -124,6 +124,23 @@ def main() -> None:
         sys.exit(1)
 
     out = EVALS / "golden_set.jsonl"
+
+    # Refuse to shrink the golden set without being told to.
+    #
+    # This script assembles from the original hand-written sources, which is 75 questions.
+    # The set on disk is 202 — the Day 2 expansion was added by a different path and lives
+    # only in the file. Running this script therefore *destroys* 127 questions, and it takes
+    # no arguments, so anything that executes it destroys them: a shell loop checking that
+    # every script imports cleanly ran `python scripts/assemble_golden.py --help`, which is
+    # not a flag it parses, and silently rewrote the file. git had it; nothing else warned.
+    if out.exists():
+        existing = sum(1 for line in out.read_text().splitlines() if line.strip())
+        if len(records) < existing and "--force" not in sys.argv:
+            sys.exit(
+                f"refusing to overwrite {out.name}: it holds {existing} questions and this "
+                f"run assembled {len(records)}, which would delete {existing - len(records)}."
+                f"\nRe-run with --force if that is genuinely what you want.")
+
     with out.open("w") as fh:
         for record in records:
             fh.write(json.dumps(record) + "\n")

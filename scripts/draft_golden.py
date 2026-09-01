@@ -31,9 +31,10 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "src"))
 
 from evals.metrics import NGRAM, _WORD  # noqa: E402
-from src.finhelm.llm import claude  # noqa: E402
+from finhelm.llm import claude  # noqa: E402
 
 PROCESSED = ROOT / "data" / "processed"
 

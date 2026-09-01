@@ -165,7 +165,7 @@ def retrieve(
     decision = (
         Route(collections, "explicit", "caller specified collections")
         if collections
-        else route(query)
+        else route(query, cfg.llm_router)
     )
 
     set_attributes(**{"retrieve.route": "+".join(decision.collections),

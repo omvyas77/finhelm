@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from src.finhelm.stores import INDEX_DIR, load_store
+from finhelm.stores import INDEX_DIR, load_store
 
 
 @pytest.mark.skipif(

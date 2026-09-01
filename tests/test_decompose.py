@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.finhelm.agent import decompose as D  # noqa: E402
+from finhelm.agent import decompose as D  # noqa: E402
 
 Q = "How does JPMorgan's CET1 ratio compare with Citigroup's?"
 
