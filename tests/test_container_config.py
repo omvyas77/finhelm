@@ -175,3 +175,43 @@ def test_mlflow_allows_the_host_it_is_published_on():
     allowed = next(str(c) for c in COMPOSE["services"]["mlflow"]["command"]
                    if str(c).startswith("--allowed-hosts="))
     assert f"localhost:{host_port}" in allowed, f"{host_port} missing from {allowed}"
+
+
+# ------------------------------------------- validators must score the served config
+
+def test_the_judged_gate_scores_the_served_config():
+    """The rule this file exists to enforce, applied to the quality gate.
+
+    tests/test_smoke_deepeval.py built its answers with a bare `Config()` — fixed, dense,
+    no reranking, bge-small, k=8 — for the life of the file. The service is pinned to
+    semantic + hybrid + rerank + contextual + bge-base at k=16, so every quality gate this
+    project passed was gating a configuration it never ran.
+
+    Asserted as text rather than by importing and inspecting, because the failure mode is
+    a *source* mistake and the local filesystem hides it at runtime: on a developer machine
+    `data/index/filings_fixed` exists, so the wrong config loads happily and the suite goes
+    green. It surfaced only on a runner that had no such directory.
+    """
+    source = (ROOT / "tests" / "test_smoke_deepeval.py").read_text()
+    assert "from finhelm.api import CONFIG" in source, \
+        "the judged gate must score api.CONFIG, the config the service serves"
+    # A bare Config() anywhere in this file reintroduces the bug.
+    assert not re.search(r"=\s*Config\(\s*\)", source), \
+        "found a bare Config() in the judged gate; it must use api.CONFIG"
+
+
+def test_the_eval_gate_workflow_scores_the_served_config():
+    """Same rule, applied to the deterministic tier: the flags CI passes to run_eval must
+    describe api.CONFIG. A gate calibrated against one retriever and run against another
+    measures nothing about the diff."""
+    workflow = (ROOT / ".github" / "workflows" / "eval-gate.yml").read_text()
+    gate = workflow[workflow.index("Deterministic eval gate"):]
+    gate = gate[:gate.index("Upload eval results")]
+
+    from finhelm.api import CONFIG
+
+    assert f"--chunking {CONFIG.chunking}" in gate
+    assert f"--retriever {CONFIG.retriever}" in gate
+    assert ("--rerank" in gate) == CONFIG.rerank
+    assert ("--contextual" in gate) == CONFIG.contextual_headers
+    assert CONFIG.embed_model == _arg("EMBED_MODEL")
