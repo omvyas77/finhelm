@@ -48,10 +48,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "src"))
 
 from evals.metrics import NEGATIVE_TYPES, refused  # noqa: E402
-from src.finhelm import llm  # noqa: E402
-from src.finhelm.config import Config  # noqa: E402
+from finhelm import llm  # noqa: E402
+from finhelm.config import Config  # noqa: E402
 
 RESULTS = ROOT / "evals" / "results"
 CACHE_ROOT = ROOT / ".cache" / "ragas"
@@ -118,7 +119,7 @@ def judge(cfg: Config):
     from ragas.embeddings import LangchainEmbeddingsWrapper
     from ragas.llms import LangchainLLMWrapper
 
-    from src.finhelm.judge import rate_limited_langchain_gemini
+    from finhelm.judge import rate_limited_langchain_gemini
 
     path = cache_dir(cfg.judge_model)
     path.mkdir(parents=True, exist_ok=True)

@@ -9,11 +9,11 @@ worse than the backends being obviously incompatible.
 import numpy as np
 import pytest
 
-from src.finhelm.config import Config
-from src.finhelm.stores.base import VectorStore, matches
-from src.finhelm.stores.faiss_store import FaissStore
-from src.finhelm.stores.pgvector_store import PgVectorStore
-from src.finhelm.stores.pinecone_store import PineconeStore
+from finhelm.config import Config
+from finhelm.stores.base import VectorStore, matches
+from finhelm.stores.faiss_store import FaissStore
+from finhelm.stores.pgvector_store import PgVectorStore
+from finhelm.stores.pinecone_store import PineconeStore
 
 
 def test_faiss_satisfies_the_protocol():

@@ -13,6 +13,10 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "evals"]
+# Without this, a bare `pytest tests/` — which is exactly how CI invokes it — fails at
+# collection: the package lives under src/ and nothing puts it on sys.path. It worked
+# locally only because every invocation happened to carry PYTHONPATH=src.
+pythonpath = ["src"]
 markers = [
     # Costs real generation and judge API calls. `-m "not slow"` runs only the
     # deterministic metric tests, which is what you want while iterating locally.

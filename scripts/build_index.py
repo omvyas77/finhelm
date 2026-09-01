@@ -16,17 +16,21 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.finhelm.chunking import chunks_name  # noqa: E402
-from src.finhelm.chunking.context import contextualize  # noqa: E402
-from src.finhelm.config import Config  # noqa: E402
-from src.finhelm.embeddings import encode, pick_device  # noqa: E402
-from src.finhelm.stores import index_name  # noqa: E402
-from src.finhelm.stores.faiss_store import FaissStore  # noqa: E402
+from finhelm.chunking import chunks_name  # noqa: E402
+from finhelm.chunking.context import contextualize  # noqa: E402
+from finhelm.config import Config  # noqa: E402
+from finhelm.embeddings import encode, pick_device  # noqa: E402
+from finhelm.stores import index_name  # noqa: E402
+from finhelm.stores.faiss_store import FaissStore  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-PROCESSED = ROOT / "data" / "processed"
-INDEX_DIR = ROOT / "data" / "index"
+# From finhelm.paths, not rebuilt here, so FINHELM_DATA_DIR actually reaches this
+# script. It did not: these two lines used to be their own copy of the default, and a
+# run pointed at the small CI fixture silently embedded the real 24,650-chunk corpus
+# instead and was on its way to overwriting the real index when it was caught.
+from finhelm.paths import INDEX_DIR, PROCESSED  # noqa: E402
 
 META_FIELDS = [
     "chunk_id", "doc_id", "source", "ticker", "form", "date", "section", "url",
@@ -55,6 +59,7 @@ def main() -> None:
     cfg = Config(**overrides)
     src = PROCESSED / f"{chunks_name(args.collection, args.strategy, cfg.chunk_tokens)}.parquet"
     df = pd.read_parquet(src)
+    print(f"reading {src} ({len(df):,} chunks)")
     print(f"{src.name}: {len(df)} chunks | {cfg.embed_model} | device={pick_device()}")
 
     # Only the embedded text carries the header; df["text"] (and therefore the stored

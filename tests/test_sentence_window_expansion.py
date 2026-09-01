@@ -27,8 +27,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from evals.metrics import is_hit  # noqa: E402
-from src.finhelm.retrieve import window  # noqa: E402
-from src.finhelm.stores.base import Hit  # noqa: E402
+from finhelm.retrieve import window  # noqa: E402
+from finhelm.stores.base import Hit  # noqa: E402
 
 CHUNKS = window.PROCESSED / f"chunks_filings_{window.STRATEGY}.parquet"
 needs_chunks = pytest.mark.skipif(not CHUNKS.exists(), reason="sentence_window chunks not built")

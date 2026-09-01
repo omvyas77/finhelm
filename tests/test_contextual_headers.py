@@ -11,9 +11,9 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from evals import metrics as M  # noqa: E402
-from src.finhelm.chunking.context import contextualize, header  # noqa: E402
-from src.finhelm.embeddings import query_prefix  # noqa: E402
-from src.finhelm.stores import index_name  # noqa: E402
+from finhelm.chunking.context import contextualize, header  # noqa: E402
+from finhelm.embeddings import query_prefix  # noqa: E402
+from finhelm.stores import index_name  # noqa: E402
 
 EDGAR = {"source": "edgar", "ticker": "JPM", "form": "10-K", "date": "2024-02-16",
          "section": "item_1a_risk_factors"}

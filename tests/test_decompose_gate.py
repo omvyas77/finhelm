@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.finhelm.agent.decompose import _issuers, _periods, worth_splitting
+from finhelm.agent.decompose import _issuers, _periods, worth_splitting
 
 
 @pytest.mark.parametrize("question", [

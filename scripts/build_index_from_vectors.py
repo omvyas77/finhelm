@@ -21,13 +21,17 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.finhelm.stores import index_name  # noqa: E402
-from src.finhelm.stores.faiss_store import FaissStore  # noqa: E402
+from finhelm.stores import index_name  # noqa: E402
+from finhelm.stores.faiss_store import FaissStore  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-PROCESSED = ROOT / "data" / "processed"
-INDEX_DIR = ROOT / "data" / "index"
+# From finhelm.paths, not rebuilt here, so FINHELM_DATA_DIR actually reaches this
+# script. It did not: these two lines used to be their own copy of the default, and a
+# run pointed at the small CI fixture silently embedded the real 24,650-chunk corpus
+# instead and was on its way to overwriting the real index when it was caught.
+from finhelm.paths import INDEX_DIR, PROCESSED  # noqa: E402
 
 META_FIELDS = ["chunk_id", "doc_id", "source", "ticker", "form", "date", "section", "url",
                "text", "window_start", "window_end"]

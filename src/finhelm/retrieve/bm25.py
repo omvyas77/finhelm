@@ -22,8 +22,7 @@ from rank_bm25 import BM25Okapi
 
 from ..stores.base import Hit, matches
 
-ROOT = Path(__file__).resolve().parents[3]
-PROCESSED = ROOT / "data" / "processed"
+from ..paths import PROCESSED, ROOT  # noqa: F401  (ROOT re-exported)
 
 _TOKEN = re.compile(r"[a-z0-9$][a-z0-9.$%-]*")
 

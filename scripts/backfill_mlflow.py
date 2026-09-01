@@ -28,6 +28,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "src"))
 
 from evals import metrics as M  # noqa: E402
 
@@ -37,7 +38,7 @@ from evals import metrics as M  # noqa: E402
 # sqlite:///mlflow.db. Two tracking stores that each look fine in isolation is a worse
 # failure than no tracking at all, because the ablation would appear to be missing runs
 # rather than appearing to be broken.
-from src.finhelm import llm  # noqa: E402,F401
+from finhelm import llm  # noqa: E402,F401
 
 RESULTS = ROOT / "evals" / "results"
 EXPERIMENT = "finhelm-retrieval"

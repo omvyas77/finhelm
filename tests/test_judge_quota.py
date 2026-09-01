@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.finhelm.judge import (
+from finhelm.judge import (
     _DAILY_MESSAGE,
     DailyQuotaExhausted,
     _is_daily_quota,
@@ -98,7 +98,7 @@ def test_the_ragas_path_also_fails_fast_on_the_daily_quota(monkeypatch):
     """
     from langchain_google_genai import ChatGoogleGenerativeAI
 
-    from src.finhelm.judge import rate_limited_langchain_gemini
+    from finhelm.judge import rate_limited_langchain_gemini
 
     def boom(self, *args, **kwargs):
         raise Exception(PER_DAY)
@@ -114,7 +114,7 @@ def test_the_ragas_path_still_retries_a_per_minute_quota(monkeypatch):
     """Failing fast must not swallow the quota that pacing *can* recover from."""
     from langchain_google_genai import ChatGoogleGenerativeAI
 
-    from src.finhelm import judge
+    from finhelm import judge
 
     calls = []
 

@@ -7,9 +7,9 @@ from pathlib import Path
 
 from .base import Hit, VectorStore, matches
 
-ROOT = Path(__file__).resolve().parents[3]
+from ..paths import INDEX_DIR, ROOT  # noqa: F401  (ROOT re-exported)
+
 DEFAULT_EMBED_MODEL = "BAAI/bge-small-en-v1.5"
-INDEX_DIR = ROOT / "data" / "index"
 
 
 def index_name(collection: str, strategy: str, contextual: bool = False,

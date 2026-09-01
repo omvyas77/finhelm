@@ -1,0 +1,203 @@
+name: eval-gate
+
+# Two tiers, and the split is about cost rather than importance. The deterministic tier is
+# free and offline, so it runs on every push; the judged tier spends real API calls, so it
+# runs on pull requests only. That is the whole argument for not running every eval every
+# time, and it only works if the free tier genuinely gates something.
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  # A second push to the same branch makes the first run's answer irrelevant.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.10"
+  TORCH_VERSION: "2.13.0"
+  EMBED_MODEL: BAAI/bge-base-en-v1.5
+  RERANK_MODEL: BAAI/bge-reranker-base
+  # The gate runs against the committed fixture corpus in data/ci, never the real one:
+  # the real corpus is 192 MB of chunk parquet plus 961 MB of index, both gitignored, so a
+  # runner has neither. See scripts/make_ci_fixture.py.
+  FINHELM_DATA_DIR: ${{ github.workspace }}/data/ci
+  FINHELM_DEVICE: cpu
+  # Not a performance setting. faiss-cpu and torch each bring their own OpenMP runtime,
+  # and with torch on CPU the two thread pools collide: every dense retrieval segfaults
+  # (SIGSEGV, exit 139) the moment FAISS is loaded before torch encodes. It never showed
+  # up in development because a Mac defaults to MPS, where torch does not spin up an
+  # OpenMP pool — so this is a bug that only exists on the machines CI runs on.
+  # Measured: baseline 139, KMP_DUPLICATE_LIB_OK=TRUE still 139, OMP_NUM_THREADS=1 clean.
+  OMP_NUM_THREADS: "1"
+
+jobs:
+  fast:
+    name: tests + deterministic gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      # torch from the CPU index, exactly as the Dockerfile does it and for exactly the
+      # same reason: ubuntu-latest is amd64, where the PyPI wheel bundles the CUDA runtime
+      # and drags in ~2.5 GB of nvidia-* that this job can never use. --no-deps is what
+      # makes the CPU index usable at all — --index-url replaces PyPI rather than adding
+      # to it, so torch's ordinary Python dependencies have nowhere to resolve from.
+      # requirements.txt supplies them in the next step.
+      - name: Install torch (CPU build)
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-deps "torch==${TORCH_VERSION}" \
+            --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Nothing else notices an image or a runner quietly reacquiring the GPU stack.
+      - name: Assert no CUDA packages were pulled in
+        run: |
+          leaked="$(pip list --format=freeze | grep -E '^(nvidia-|triton==|pytorch-triton)' || true)"
+          if [ -n "$leaked" ]; then
+            echo "::error::CUDA packages installed on a CPU-only runner:"
+            echo "$leaked"
+            exit 1
+          fi
+          python -c "import torch; print('torch', torch.__version__)"
+
+      # -rs prints the reason for every skip. Two tests skip themselves when the real
+      # index is absent, which is always true on a runner — without -rs the run is green
+      # and silent about the fact that it never touched FAISS.
+      - name: Unit tests
+        run: pytest tests/ -q -rs -m "not slow"
+
+      - name: Cache model weights
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ env.EMBED_MODEL }}-${{ env.RERANK_MODEL }}
+
+      # Keyed on the fixture itself, so regenerating data/ci invalidates the index rather
+      # than silently evaluating new questions against an old corpus.
+      # No index build step, and that is deliberate. Embedding the fixture measured at
+      # 2 chunks/s on CPU — 1,131 filings chunks took 581 s — so building it here would
+      # cost ~16 minutes on a runner with fewer cores than the machine that measured it.
+      # Caching only moves that cost to whenever the cache is evicted or the fixture is
+      # regenerated. The index is 9.3 MB, so it is committed instead: data/ci is laid out
+      # as a data directory (processed/ beside index/) and FINHELM_DATA_DIR points
+      # straight at it. CI embeds 40 queries, not 1,900 chunks.
+      #
+      # A committed index can go stale against the config that reads it, silently, because
+      # _resolve_strategy substitutes `fixed` for a missing index rather than failing.
+      # --fail-on-fallback below is what turns that into a red run.
+      - name: Check the committed fixture is present
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "src")
+          from finhelm.paths import INDEX_DIR, PROCESSED
+          chunks = sorted(p.name for p in PROCESSED.glob("*.parquet"))
+          indexes = sorted(p.name for p in INDEX_DIR.iterdir()) if INDEX_DIR.exists() else []
+          print("chunks: ", chunks)
+          print("indexes:", indexes)
+          assert chunks and indexes, "data/ci fixture missing; regenerate with scripts/make_ci_fixture.py"
+          PY
+
+      # --deterministic-only is retrieve-only *and* no LLM router: no API key, no network,
+      # no cost. Gating on recall@16 because 16 is what the service actually hands the
+      # generator; the build guide's recall_at_5 is not a key this run produces, and
+      # --fail-under treats an unknown metric as a failure rather than a pass precisely so
+      # that gate cannot sit green forever.
+      #
+      # The floor is calibrated against the fixture corpus and means nothing against the
+      # real one — ~1,900 chunks is a far easier retrieval problem than 24,650, so this
+      # number reads higher than the headline 0.7403. It is a tripwire for "the diff moved
+      # retrieval", not a quality measure.
+      # No --agentic: --deterministic-only forces it off, because agent.decompose calls
+      # the model and swallows every exception, so a keyless run would not fail — it would
+      # quietly stop splitting multi-hop questions and report a number that looks real.
+      # This tier therefore does not cover decomposition; the judged tier does.
+      - name: Deterministic eval gate
+        run: |
+          python evals/run_eval.py \
+            --chunking semantic --retriever hybrid --rerank --contextual \
+            --embed-model "$EMBED_MODEL" --top-k-context 16 \
+            --golden evals/ci_subset.jsonl \
+            --deterministic-only --fresh --tag ci \
+            --fail-on-fallback \
+            --fail-under recall_at_16=CALIBRATE_ME
+        # CALIBRATE_ME is deliberate and this workflow will fail until it is a number.
+        #
+        # The calibration run has not completed: it died at question 24 of 40 on the
+        # machine that was supposed to produce it. A floor has to come from a finished
+        # run against this exact fixture, and inventing one from 24 questions — or
+        # copying the full-corpus 0.7403, which describes 24,650 chunks rather than
+        # 1,903 — would produce a threshold that looks measured and is not.
+        #
+        # --fail-under rejects a non-numeric value outright, so this fails loudly at the
+        # gate step rather than quietly not gating. Commenting the line out instead would
+        # be the worse mistake: a workflow that still reads like a gate and checks
+        # nothing. To finish: run the command above without --fail-under, take
+        # recall_at_16 from the summary, and set the floor a little beneath it.
+
+      # if: always() — a failing gate is exactly when the per-question detail is worth
+      # having, and a run that only uploads its artifacts on success is useless twice.
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-eval-results
+          path: evals/results/
+          retention-days: 14
+
+  judged:
+    name: judged smoke + regression
+    if: github.event_name == 'pull_request'
+    needs: fast
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install torch (CPU build)
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-deps "torch==${TORCH_VERSION}" \
+            --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # The generator and the judge must stay in different model families — same-family
+      # judging produces self-preference bias, and Config.__post_init__ enforces it. Both
+      # keys are needed or the suite cannot run at all.
+      - name: DeepEval smoke suite
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: pytest tests/test_smoke_deepeval.py -q -rs -m slow
+
+      # Compares the newest history entry against evals/baseline.json. Distinct from the
+      # floor above: a floor catches "this is bad", this catches "this is worse than what
+      # we agreed to ship", which is the failure a generous floor lets through.
+      - name: Regression against the accepted baseline
+        run: python evals/compare_to_baseline.py --max-regression 0.03
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: judged-eval-results
+          path: evals/results/
+          retention-days: 14
