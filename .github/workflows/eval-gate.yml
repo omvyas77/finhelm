@@ -1,9 +1,19 @@
 name: eval-gate
 
-# Two tiers, and the split is about cost rather than importance. The deterministic tier is
-# free and offline, so it runs on every push; the judged tier spends real API calls, so it
-# runs on pull requests only. That is the whole argument for not running every eval every
-# time, and it only works if the free tier genuinely gates something.
+# Three tiers, and the shape was decided by a measurement rather than by the plan.
+#
+# The intent was two: a free deterministic tier on every push, and a paid judged tier on
+# pull requests. The free tier was to run a real retrieval eval, because a gate that only
+# re-reads recorded numbers gates nothing about the code in the diff.
+#
+# It does run one. It just cannot run it on every push: on a 2-vCPU runner the 40-question
+# fixture eval takes 49 s per question and projects to 33 minutes, which is not a tier
+# anyone leaves switched on. So the eval moved to pull requests and the every-push tier is
+# what it can honestly be — unit tests, including the tests that cover the gate logic
+# itself, in about three minutes.
+#
+# What is lost is stated rather than glossed: a push straight to a branch with no PR gets
+# no retrieval check. What is kept is that the check, when it runs, is real.
 
 on:
   push:
@@ -24,19 +34,24 @@ env:
   # runner has neither. See scripts/make_ci_fixture.py.
   FINHELM_DATA_DIR: ${{ github.workspace }}/data/ci
   FINHELM_DEVICE: cpu
-  # Not a performance setting. faiss-cpu and torch each bring their own OpenMP runtime,
-  # and with torch on CPU the two thread pools collide: every dense retrieval segfaults
-  # (SIGSEGV, exit 139) the moment FAISS is loaded before torch encodes. It never showed
-  # up in development because a Mac defaults to MPS, where torch does not spin up an
-  # OpenMP pool — so this is a bug that only exists on the machines CI runs on.
-  # Measured: baseline 139, KMP_DUPLICATE_LIB_OK=TRUE still 139, OMP_NUM_THREADS=1 clean.
-  OMP_NUM_THREADS: "1"
+  # Pinned, but to 2 rather than 1, and the distinction cost a timeout to learn.
+  #
+  # faiss-cpu and torch each ship an OpenMP runtime. On macOS both live in one process and
+  # collide, and dense retrieval segfaults; OMP_NUM_THREADS=1 is the fix there. Linux
+  # wheels do not carry that conflict (verified Day 1), so importing the macOS workaround
+  # into CI bought nothing and cost half the machine: the cross-encoder ran on one of two
+  # vCPUs at 49 s/question, and the 40-question gate projected to 33 minutes.
+  #
+  # 2 matches the runner. If this ever does segfault on Linux, drop it to 1 and accept the
+  # runtime — a loud crash is the signal, and it is not a silent one.
+  OMP_NUM_THREADS: "2"
 
 jobs:
   fast:
-    name: tests + deterministic gate
+    name: tests
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Measured at ~3 minutes, almost all of it pip resolving 213 pinned packages.
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
 
@@ -76,6 +91,41 @@ jobs:
       # and silent about the fact that it never touched FAISS.
       - name: Unit tests
         run: pytest tests/ -q -rs -m "not slow"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-output
+          path: evals/results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  eval:
+    name: deterministic retrieval gate
+    # Pull requests only. See the note at the top: 33 minutes is not an every-push tier.
+    if: github.event_name == 'pull_request'
+    needs: fast
+    runs-on: ubuntu-latest
+    # 45, against a 33-minute projection. The first attempt at this used 25 and was
+    # cancelled at question 27 of 40, which is how the 49 s/question figure was obtained.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install torch (CPU build)
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-deps "torch==${TORCH_VERSION}" \
+            --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
       - name: Cache model weights
         uses: actions/cache@v4
