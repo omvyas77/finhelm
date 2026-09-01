@@ -2109,3 +2109,25 @@ calibration run died at question 24 of 40 and a floor has to come from a finishe
 against this exact fixture; the full-corpus 0.7403 describes 24,650 chunks and would be a
 threshold that looks measured and is not. `--fail-under` rejects a non-numeric value, so
 the workflow fails loudly rather than quietly not gating.
+
+### Correction to the segfault entry above
+
+`KMP_DUPLICATE_LIB_OK=TRUE` "not helping" was a misreading: `src/finhelm/__init__.py`
+already sets it, before anything imports faiss or torch. So the A/B above compared the
+flag against itself, and the honest description is not "the flag does not work" but
+"there are two distinct failures here and the flag only covers the first".
+
+  1. **Initialization.** Two copies of `libomp.dylib` in one process abort with
+     `OMP: Error #15`. Fixed since Day 1 by the package `__init__`, and that is why the
+     project has run for weeks without seeing it.
+  2. **Runtime threading, CPU only.** With `FINHELM_DEVICE=cpu`, torch actually creates
+     its OpenMP thread pool, and the pools collide during execution rather than at load.
+     Suppressing the init check does nothing for that. `OMP_NUM_THREADS=1` does, by
+     leaving torch a single thread to schedule.
+
+The claim that this "only exists on the machines CI runs on" was also wrong. The Day 1
+note records that Linux wheels do not carry the duplicate-libomp conflict at all, so CI
+may well never have hit it. What is true is narrower and worth keeping: it appears only
+when torch runs on CPU, which is what CI does and what a Mac does not. `OMP_NUM_THREADS=1`
+stays in the workflow — it is harmless, and on a 2-vCPU runner capping thread contention
+is the right default anyway — but it is insurance, not a fix for a confirmed CI failure.
