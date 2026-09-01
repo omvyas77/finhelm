@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -28,13 +28,14 @@ from .generate import answer
 from .telemetry import log_request, setup, span
 
 ROOT = Path(__file__).resolve().parents[2]
-RESULTS = ROOT / "evals" / "results"
 HISTORY = ROOT / "evals" / "history.jsonl"
 
 # Configured before the app is instrumented. Returns False and costs nothing when no
 # collector is set, which is the case for the eval harness and for running the service
 # standalone.
-TRACING = setup("finhelm")
+# No name passed: OTEL_SERVICE_NAME decides, so the same image registers as
+# finhelm-api or finhelm-ui depending on which service compose started it as.
+TRACING = setup()
 
 app = FastAPI(
     title="finhelm",
@@ -76,6 +77,12 @@ class AskRequest(BaseModel):
         None, description="restrict to 'filings' and/or 'complaints'")
     filters: dict | None = Field(
         None, description="metadata filter, e.g. {'ticker': 'JPM'}")
+    # The one knob a demo has any business flipping. Left unset the service uses its
+    # pinned config; the Streamlit UI offers it as a toggle, and without it here that
+    # toggle silently did nothing whenever the UI was talking to the API — which is
+    # every deployment, since compose always wires FINHELM_API_URL.
+    agentic: bool | None = Field(
+        None, description="override query decomposition for this request")
 
 
 class Citation(BaseModel):
@@ -187,10 +194,13 @@ def eval_report() -> dict:
 @app.post("/ask", response_model=AskResponse)
 def ask(request: AskRequest, http_request: Request) -> AskResponse:
     request_id = getattr(http_request.state, "request_id", None)
+    # replace() on a frozen dataclass, so the pinned CONFIG is never mutated by a request.
+    config = (CONFIG if request.agentic is None
+              else replace(CONFIG, agentic=request.agentic))
     with span("ask", **{"request.id": request_id,
                         "query.chars": len(request.question),
-                        "query.agentic": CONFIG.agentic}):
-        result = answer(request.question, CONFIG, request.filters, request.collections)
+                        "query.agentic": config.agentic}):
+        result = answer(request.question, config, request.filters, request.collections)
 
     citations = []
     for i, hit in enumerate(result.retrieved, start=1):

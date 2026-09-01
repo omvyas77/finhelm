@@ -1,0 +1,190 @@
+# Five services, three of which are the same image.
+#
+# api, ui, and mlflow all run from `finhelm:local` rather than pulling an upstream MLflow
+# image, because the sqlite tracking store on disk was written by mlflow 3.15.1 — the
+# version pinned in requirements.txt — and a server on a different minor will happily
+# migrate that schema forward on first connect. Sharing the image makes the version that
+# reads mlflow.db the same one that wrote it, by construction rather than by vigilance.
+#
+# Requires a .env at the repo root (see .env.example). It is gitignored and excluded from
+# the build context; the keys arrive here as runtime environment, never as an image layer.
+
+name: finhelm
+
+x-app-image: &app-image
+  image: finhelm:local
+  build:
+    context: .
+    dockerfile: Dockerfile
+
+x-app-env: &app-env
+  # 4317 is OTLP over gRPC and 4318 is OTLP over HTTP. They are not interchangeable, and
+  # pointing an HTTP exporter at 4317 fails as a connection reset with no useful message.
+  # telemetry.py picks the exporter from the port, so the port is the only knob here.
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+  MLFLOW_TRACKING_URI: http://mlflow:5000
+  # The name pgvector_store.py actually reads. It was POSTGRES_DSN in .env and
+  # PGVECTOR_DSN here, and the code reads neither — so every container would have
+  # silently used the hardcoded localhost default and talked to itself.
+  FINHELM_PG_DSN: postgresql://finhelm:finhelm@postgres:5432/finhelm
+
+services:
+  api:
+    <<: *app-image
+    container_name: finhelm-api
+    env_file: .env
+    environment:
+      <<: *app-env
+      OTEL_SERVICE_NAME: finhelm-api
+    ports:
+      - "8000:8000"
+    volumes:
+      # Read-only on purpose. The API reads FAISS indexes and chunk parquet and writes
+      # neither; a rw mount would let a bug in a request path corrupt a 961 MB artifact
+      # that takes 85 minutes to rebuild.
+      - ./data:/app/data:ro
+      - ./evals:/app/evals:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+    # Explicit rather than inherited from the VM, and measured rather than guessed. A
+    # single /ask peaks at 2.694 GiB: bge-base and the cross-encoder resident together,
+    # plus the FAISS index and its meta.jsonl, which carries the full chunk text. 2g
+    # looked generous and killed the container mid-request — and `docker inspect` then
+    # reported OOMKilled=false, because by the time it is read the field describes the
+    # replacement container. Without any limit the VM's OOM killer picks a victim instead,
+    # and the victim is not reliably the process that grew.
+    mem_limit: 3g
+    restart: unless-stopped
+
+  ui:
+    <<: *app-image
+    container_name: finhelm-ui
+    environment:
+      <<: *app-env
+      OTEL_SERVICE_NAME: finhelm-ui
+      # With this set app.py calls the API over HTTP instead of importing the pipeline.
+      # That keeps one copy of the models resident in one container: loading them in both
+      # would cost ~1.5 GB of duplicate resident weights on an 8 GB host for no benefit,
+      # and would let the UI and the API drift onto different configs.
+      FINHELM_API_URL: http://api:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+    command:
+      - streamlit
+      - run
+      - app.py
+      - --server.address=0.0.0.0
+      - --server.port=8501
+      - --server.headless=true
+      # Streamlit phones home with usage stats by default.
+      - --browser.gatherUsageStats=false
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    mem_limit: 768m
+    restart: unless-stopped
+
+  postgres:
+    # pgvector/pgvector rather than postgres + a CREATE EXTENSION dance: the extension is
+    # compiled in and the tag pins the server major, so `vector` is available on first
+    # boot instead of after an init script that has to be kept working.
+    image: pgvector/pgvector:pg16
+    container_name: finhelm-postgres
+    environment:
+      POSTGRES_USER: finhelm
+      POSTGRES_PASSWORD: finhelm
+      POSTGRES_DB: finhelm
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # -U matters: bare pg_isready checks the socket is accepting, which is true for
+      # several seconds before the database is actually ready to authenticate a user.
+      test: ["CMD-SHELL", "pg_isready -U finhelm -d finhelm"]
+      interval: 5s
+      timeout: 5s
+      start_period: 20s
+      retries: 10
+    mem_limit: 512m
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: finhelm-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"   # web UI
+      - "4317:4317"     # OTLP/gRPC — what the app exports to
+      - "4318:4318"     # OTLP/HTTP  — published so a host-side process can export too
+    mem_limit: 512m
+    restart: unless-stopped
+
+  mlflow:
+    <<: *app-image
+    container_name: finhelm-mlflow
+    # The one service that overrides the image's non-root user, and only because of the
+    # bind mount below. mlflow.db is a sqlite file owned by the host user; the image's
+    # uid 10001 can read it and not write it, and sqlite reports that as "attempt to write
+    # a readonly database" from somewhere deep in a request. Running as the file's owner
+    # is the fix that does not involve either chmod 666 on the host or root in the
+    # container. Override on a machine whose uid is not 501 (Linux CI is usually 1000).
+    user: "${FINHELM_UID:-501}:${FINHELM_GID:-20}"
+    ports:
+      # 5001 on the host, 5000 in the container. macOS AirPlay Receiver (ControlCenter)
+      # binds *:5000 by default, so `-p 5000:5000` looks published and silently loses:
+      # every request to localhost:5000 is answered by AirTunes with a bare 403 and never
+      # reaches the container. Half an hour went into the mlflow logs before a response
+      # header read `Server: AirTunes/960.13.1`. The container port is unchanged, so
+      # MLFLOW_TRACKING_URI stays http://mlflow:5000 on the compose network.
+      - "5001:5000"
+    volumes:
+      # rw, unlike the api mount: this service's whole job is to write to mlflow.db and
+      # mlruns/. Bound to the host so the 20 existing runs stay visible and so a
+      # `docker compose down -v` cannot take the experiment history with it.
+      - ./mlflow.db:/app/mlflow.db
+      - ./mlruns:/app/mlruns
+    command:
+      - mlflow
+      - server
+      - --host=0.0.0.0
+      - --port=5000
+      - --backend-store-uri=sqlite:////app/mlflow.db
+      - --default-artifact-root=/app/mlruns
+      # One worker, not the per-CPU default. Measured: four workers hold 2041 MB of
+      # anonymous memory between them — the parent alone is 243 MB — which killed this
+      # container with exit 137 on a loop while `docker inspect` said OOMKilled=false,
+      # because the field describes the container that had just restarted. A tracking
+      # server that one developer and one CI job read from does not need four.
+      - --workers=1
+      # mlflow 3.x refuses any request whose Host header is not on this list, and the
+      # default list does not survive a Docker port publish: in-container
+      # 127.0.0.1:5000/health returned 200 while localhost:5000 from the host returned
+      # 403. --host=0.0.0.0 alone does not change that; the server's own startup log
+      # says so and is easy to read past.
+      - --allowed-hosts=localhost:5001,127.0.0.1:5001,localhost:5000,127.0.0.1:5000,mlflow:5000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+    # Measured, not guessed: one worker holds 994 MB of anonymous memory steady-state, so
+    # 512m and then 1g both died with exit 137 on a restart loop. It is not the shared
+    # image doing it — /proc/1/maps shows mlflow mapping pandas, pyarrow, scipy and numpy
+    # and no torch, transformers, faiss or sklearn at all.
+    mem_limit: 1536m
+    restart: unless-stopped
+
+volumes:
+  pgdata:

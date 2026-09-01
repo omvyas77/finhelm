@@ -1,0 +1,37 @@
+# Build context hygiene. The repo working tree is 3.9 GB, almost all of it artifacts the
+# image either mounts at runtime or rebuilds; sending that to the daemon would dominate
+# every build's wall time and cache-bust on any index rebuild.
+.git
+.venv
+.pytest_cache
+.cache
+.deepeval
+__pycache__
+**/__pycache__
+*.py[cod]
+.DS_Store
+**/.DS_Store
+
+# Secrets never enter the build context. COPY . . with a .env present bakes the key into
+# a layer, and layers survive `docker run --rm` and travel with `docker push`.
+.env
+.env.bak.*
+requirements.txt.stale
+
+# 961 MB of FAISS indexes and 192 MB of chunk parquet. Mounted as a volume by compose
+# (see docker-compose.yml) rather than baked, because they are rebuildable, they change
+# far more often than the code, and a cold `docker build` should not move a gigabyte.
+data/
+mlflow.db
+mlruns/
+notes/
+
+# Model weights are baked (see Dockerfile), but from the Hub in a dedicated layer, not
+# copied out of the developer's local cache — that cache is 757 MB and holds every model
+# the ablation ever touched, not the two the image actually serves.
+
+# 148 MB of per-run evaluation detail, each record carrying the full retrieved passage
+# text. /eval-report reads evals/history.jsonl (72 KB) and never opens these, so the image
+# gains nothing from them. Compose mounts ./evals read-only for the runs that do want them.
+evals/results/
+evals/*.bak.*
