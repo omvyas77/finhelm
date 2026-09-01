@@ -1,0 +1,28 @@
+# The FAISS index is 961 MB and takes 85 minutes to build on CPU. Baking it into the image
+# would put a gigabyte into every pull and rebuild it on every code change; building it in
+# an initContainer would cost 85 minutes per pod start. So it is a volume.
+#
+# ReadOnlyMany because every replica reads the same immutable index and none writes it —
+# which is also what lets the HPA scale past one pod. On GKE this wants Filestore, on EKS
+# an EFS volume; a block-device StorageClass cannot serve it.
+#
+# Observed on a kind cluster (rancher.io/local-path, the default class), because the
+# failure is worth knowing exactly: the PVC stays Pending forever, every pod stays
+# Pending, and **no event on either object ever mentions the access mode.** The PVC says
+# only "waiting for first consumer" and the pod reports nothing at all, so it reads like a
+# scheduling problem. Confirmed by changing one field: an otherwise identical PVC with
+# ReadWriteOnce bound in six seconds and its pod went Ready.
+#
+# To validate these manifests on kind, change this to ReadWriteOnce and drop the HPA to
+# one replica. That is a local-validation change, not the production shape.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: finhelm-index
+  namespace: finhelm
+spec:
+  accessModes:
+    - ReadOnlyMany
+  resources:
+    requests:
+      storage: 5Gi

@@ -1,0 +1,74 @@
+# Cloud Run service for the API. Declarative form so the config is reviewable in git
+# rather than living in a shell history of `gcloud run deploy --flag --flag --flag`.
+#
+#   gcloud run services replace deploy/cloudrun/service.yaml --region us-central1
+#
+# Substitute PROJECT_ID and BUCKET before applying; there is no templating here on purpose,
+# because a config that silently deploys with an unsubstituted placeholder is worse than
+# one that fails.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: finhelm-api
+  annotations:
+    run.googleapis.com/launch-stage: BETA
+spec:
+  template:
+    metadata:
+      annotations:
+        # Scale to zero. The free tier is the point, and this is a demo — but see the
+        # cold-start note in README.md, because zero is not free of consequence: a cold
+        # request pays image pull plus ~20 s of model load.
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "4"
+        # The FAISS index is 961 MB and is not in the image. Mounting it from GCS keeps
+        # the image at its current 5.76 GB instead of 6.7 GB, and lets the index be
+        # rebuilt without rebuilding or re-pushing the image.
+        run.googleapis.com/execution-environment: gen2
+    spec:
+      # One request at a time. The default is 80, and this service holds a cross-encoder
+      # and an embedding model in memory and peaks at 2.694 GiB for a single question —
+      # two concurrent requests on one instance is an OOM, not a throughput gain.
+      containerConcurrency: 1
+      timeoutSeconds: 300
+      containers:
+        - image: us-central1-docker.pkg.dev/PROJECT_ID/finhelm/api:latest
+          ports:
+            - name: http1
+              containerPort: 8000
+          env:
+            - name: FINHELM_DATA_DIR
+              value: /data
+            - name: FINHELM_DEVICE
+              value: cpu
+            # faiss-cpu and torch each bring an OpenMP runtime; unpinned they collide.
+            - name: OMP_NUM_THREADS
+              value: "1"
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: anthropic-api-key
+                  key: latest
+            - name: GOOGLE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: google-api-key
+                  key: latest
+          resources:
+            limits:
+              # 4 GiB against a measured 2.694 GiB peak. Cloud Run bills per GiB-second
+              # while a request is in flight, so this is not free headroom — but an
+              # instance killed mid-request costs a retry and a cold start.
+              memory: 4Gi
+              cpu: "2"
+          volumeMounts:
+            - name: index
+              mountPath: /data
+              readOnly: true
+      volumes:
+        - name: index
+          csi:
+            driver: gcsfuse.run.googleapis.com
+            readOnly: true
+            volumeAttributes:
+              bucketName: BUCKET

@@ -1,0 +1,13 @@
+# Without this, a node drain can evict both replicas at once and the Service has no
+# endpoints for the ~20 s it takes a replacement to load its models.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: finhelm-api
+  namespace: finhelm
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: finhelm
+      component: api

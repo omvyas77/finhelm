@@ -1,0 +1,40 @@
+# Scaling on CPU, and the number is low on purpose.
+#
+# A /ask spends ~30 s in retrieval, most of it in the cross-encoder, which is CPU-bound and
+# single-threaded here (OMP_NUM_THREADS=1). So a pod is saturated well before its CPU
+# request looks exhausted, and a conventional 80% target would queue requests behind a pod
+# that still reads as half idle. 60% scales out while latency is still acceptable.
+#
+# The honest limitation: CPU is a poor proxy for what actually saturates this service,
+# which is concurrent in-flight questions. A request-rate or queue-depth metric through
+# the custom metrics API would be the right signal; that needs an adapter this demo does
+# not run, so this is the defensible approximation rather than the correct answer.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: finhelm-api
+  namespace: finhelm
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: finhelm-api
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+  behavior:
+    scaleUp:
+      # Model load is ~20 s, so a new pod is not useful immediately. Waiting a minute
+      # before reacting again stops a burst from launching six pods that all boot at once
+      # and none of which serve the burst that caused them.
+      stabilizationWindowSeconds: 60
+    scaleDown:
+      # Long, because scaling in costs a cold start on the way back up and this traffic is
+      # bursty. Five minutes of headroom is cheaper than a cold start per burst.
+      stabilizationWindowSeconds: 300
