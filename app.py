@@ -18,7 +18,11 @@ from pathlib import Path
 import streamlit as st
 
 ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT))
+# src/, not the repo root. Adding the root made `src.finhelm` importable as a namespace
+# package, and importing the same code under two names gives you two module objects: two
+# CONFIGs, two sets of lru_caches, and — in a container where PYTHONPATH already points at
+# /app/src — a second copy of the models resident in memory.
+sys.path.insert(0, str(ROOT / "src"))
 
 API_URL = os.getenv("FINHELM_API_URL")
 HISTORY = ROOT / "evals" / "history.jsonl"
@@ -60,13 +64,16 @@ def latest_eval() -> dict | None:
 def ask(question: str, agentic: bool) -> dict:
     if API_URL:
         import requests
-        response = requests.post(f"{API_URL}/ask", json={"question": question}, timeout=180)
+        response = requests.post(f"{API_URL}/ask",
+                                 json={"question": question, "agentic": agentic},
+                                 timeout=180)
         response.raise_for_status()
         return response.json()
 
-    from src.finhelm.api import CONFIG
-    from src.finhelm.generate import answer
     import dataclasses
+
+    from finhelm.api import CONFIG
+    from finhelm.generate import answer
 
     result = answer(question, dataclasses.replace(CONFIG, agentic=agentic))
     return {

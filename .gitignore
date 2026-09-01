@@ -18,6 +18,10 @@ data/index/
 
 mlruns/
 evals/results/*.json
+# Checkpoint files run_eval.py appends to so an interrupted run resumes instead of
+# re-spending an hour of API calls. Pure scratch, and one was committed by accident
+# because the rule above only covers *.json.
+evals/results/*.partial.jsonl
 # Per-run detail is a rebuildable artifact except for the headline run, which the README
 # and the write-up quote directly. `--tag final` produces <run_name>-final.json, so the
 # exception has to match the suffix, not a bare `final.json` that nothing ever writes.

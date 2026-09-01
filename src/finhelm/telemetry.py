@@ -48,11 +48,30 @@ def _reachable(endpoint: str, timeout: float = 0.25) -> bool:
         return False
 
 
-def setup(service_name: str = "finhelm") -> bool:
+DEFAULT_SERVICE_NAME = "finhelm"
+
+
+def resolve_service_name(explicit: str | None = None) -> str:
+    """Explicit argument, then OTEL_SERVICE_NAME, then the default.
+
+    A separate function because it is the part worth testing, and testing it through
+    setup() means standing up a TracerProvider and stubbing opentelemetry.sdk.resources —
+    which breaks that package's own imports.
+    """
+    return explicit or os.getenv("OTEL_SERVICE_NAME") or DEFAULT_SERVICE_NAME
+
+
+def setup(service_name: str | None = None) -> bool:
     """Point the tracer at a collector if one is reachable. Returns whether it is on.
 
     Reads OTEL_EXPORTER_OTLP_ENDPOINT, the standard variable, so compose wires this without
     the code knowing anything about Jaeger specifically.
+
+    The service name comes from OTEL_SERVICE_NAME for the same reason. Compose has been
+    setting it per service since the stack was written and nothing read it: the name was
+    hardcoded, so api and ui both registered as "finhelm" and their spans landed in one
+    undifferentiated pile in Jaeger — which is precisely what a service name is for when
+    three containers run the same image.
 
     The protocol is chosen by port because the two OTLP ports are not interchangeable:
     4317 is gRPC and 4318 is HTTP. Sending HTTP to 4317 fails in a way that looks like an
@@ -81,7 +100,8 @@ def setup(service_name: str = "finhelm") -> bool:
             exporter = OTLPSpanExporter(endpoint=f"{endpoint.rstrip('/')}/v1/traces",
                                         timeout=2)
 
-        provider = TracerProvider(resource=Resource.create({"service.name": service_name}))
+        provider = TracerProvider(
+            resource=Resource.create({"service.name": resolve_service_name(service_name)}))
         provider.add_span_processor(BatchSpanProcessor(exporter))
         trace.set_tracer_provider(provider)
         _CONFIGURED = True

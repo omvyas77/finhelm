@@ -1894,3 +1894,139 @@ never leave this machine; Colab sees question text and candidate chunks only.
 model of the same family, a different RRF constant (+0.017), max-rank fusion (+0.009), and
 more candidates (negative). What has not been tried is anything that changes *what the
 scorer is asked* rather than which model answers it.
+
+## Day 3.5: four wirings that were wrong and produced no error
+
+Containerising the service found more bugs than it introduced, and all four share a shape
+this project keeps running into: the wrong thing did not fail, it just quietly did nothing.
+
+**The build "succeeded" with no weights in it.** `RUN python - <<'PY'` is a BuildKit
+feature. `docker buildx` was not installed, so `docker build` fell back to the legacy
+builder without saying so, the heredoc had no body, python read an empty stdin, and both
+weight steps exited 0 having done nothing. The build then ran for another two stages and
+died at `COPY --from=weights /opt/hf` — pointing at a COPY that was correct, twenty
+minutes after the step that actually failed. Worse, the wrapper reported exit 0 because
+the build was piped through `tail`, so the *pipeline's* status was tail's.
+Fixed twice over: buildx installed, and the heredocs replaced by
+`scripts/bake_weights.py`, which asserts a `.safetensors` actually arrived and refuses to
+run its verification unless `HF_HUB_OFFLINE=1` is set — a check that proves nothing if the
+fence is off, because a missing file would simply be downloaded instead of reported.
+
+**The Postgres DSN had three names, no two of which matched.** `.env` set
+`POSTGRES_DSN`, the compose file set `PGVECTOR_DSN`, and `pgvector_store.py` reads
+`FINHELM_PG_DSN`. Nothing errors: the store falls through to its hardcoded default, which
+is `localhost`, which inside a container is the container. Every service would have been
+configured to talk to a database and quietly talked to itself.
+
+**The Streamlit "split complex questions" toggle did nothing.** `AskRequest` had no
+`agentic` field, so in API mode — the only mode compose ever runs, since it always sets
+`FINHELM_API_URL` — the toggle was inert. It rendered, it flipped, it changed no
+behaviour. The in-process path honoured it, which is exactly why nobody noticed.
+
+**`embed_dim` again, at the call site this time.** Day 3.4 turned `Config.embed_dim` into
+a derived property because a hardcoded 384 sat next to a 768-dim model for two weeks. The
+same disagreement was waiting one layer up: `load_store` constructed `PgVectorStore`
+without a dimension, taking the constructor's 768 default whatever model was requested.
+The image now asserts `EMBED_DIMS[model] == model.get_embedding_dimension()` at build
+time, which is the first thing in this project that checks the two against each other.
+
+Also found while looking: `requirements.txt` was 60 packages stale and missing both
+`deepeval` and `ragas`, so the CI gate the spec describes could not have installed its own
+dependencies; `stores/__init__.py` exported a `model_slug` that has never existed, so
+`from finhelm.stores import *` raised; and a `.partial.jsonl` eval checkpoint had been
+committed because the ignore rule only covered `*.json`.
+
+The lesson is the same one as the width simulation and the "silent crash" that was really
+SIGKILL: **a step that cannot fail loudly is a step you are not actually running.**
+`tests/test_container_config.py` now asserts the Dockerfile and compose agree with the
+code — the DSN name, the baked models, the gRPC port, `.env` staying out of the build
+context — in milliseconds, with no daemon.
+
+### The 2.1 GB of CUDA, and two wrong fixes before the right one
+
+Worth its own entry because both obvious fixes are wrong in ways that look right, and the
+third attempt is the one that works.
+
+**The finding.** PyPI's linux torch 2.13.0 wheel is a CUDA build on *arm64* as well as
+amd64 — the installed version string is literally `2.13.0+cu130`. It pulls
+`nvidia-cublas` (542 MB by itself), `cudnn`, `nccl`, `cusparselt`, `nvshmem`, `triton` and
+nine more: **2.1 GB of GPU runtime into an image whose entire job is CPU inference.** The
+common advice that arm64 wheels are CPU-only is simply not true here.
+
+**Wrong fix 1: `pip install --no-deps torch` before the requirements file.** Installs
+torch alone and changes nothing, because `torch==2.13.0` is itself a line *in*
+requirements.txt. pip resolves that line's dependency tree at the later step regardless of
+the distribution already being installed. The log reads `Requirement already satisfied:
+torch` twenty lines above `Downloading nvidia_cublas-13.1.1.3 (542.8 MB)`.
+
+**Wrong fix 2: `pip install --no-deps -r requirements.txt` for the whole lockfile.** The
+reasoning was that a freeze is a closure, so re-resolving can only add what the working
+environment never had. The reasoning is fine and the result was a torch that could not be
+imported at all: `OSError: libcudart.so.13: cannot open shared object file`. The `+cu130`
+wheel does not merely *depend* on the CUDA libraries, it dlopens them at import. Dropping
+them does not produce a lean CPU torch, it produces a broken one.
+
+**The actual fix: install torch from PyTorch's CPU index with `--no-deps`, on every
+architecture.** Two things had to be checked rather than assumed to get here.
+
+The CPU index *does* publish `torch-2.13.0+cpu-cp310-cp310-manylinux_2_28_aarch64.whl`.
+The first attempt's `ERROR: Could not find a version that satisfies the requirement
+flit_core` was never about torch at all — `--index-url` **replaces** PyPI rather than
+adding to it, so torch's ordinary Python dependencies had no wheels to resolve from and
+pip fell back to building them from sdists. `--no-deps` is what makes the CPU index usable
+here; the size saving is a consequence, not the mechanism.
+
+And the requirements install can then resolve normally, because pip uses the *installed*
+distribution's metadata for a requirement it already satisfies, and the `+cpu` wheel
+declares no `nvidia-*` dependencies at all. Same pip command, opposite outcome, decided
+entirely by which wheel got there first.
+
+**Both guards stay, because every one of these failures was silent by construction.**
+Nothing reports "your image grew by 2.1 GB"; `docker build` prints success either way. The
+build now fails if `import torch` fails, if any `nvidia-*` or `triton` distribution is
+installed, and — in the runtime stage, as the non-root user with the Hub fenced off — if
+the full application import graph does not come up. Wrong fix 2 was caught by the first of
+those within seconds of introducing it, which is the entire argument for writing them.
+
+**This has a consequence for the CI gate (3.6).** The spec's workflow runs a bare
+`pip install -r requirements.txt` on `ubuntu-latest`, which is amd64 — so CI would pull
+the CUDA torch on every push: gigabytes of download against a runner disk quota, to run
+tests that never touch a GPU. The CI step needs the same CPU-index treatment as the image.
+
+### 3.4 finished: what the pgvector comparison actually showed
+
+The benchmark 3.4 was blocked on now runs (`scripts/bench_stores.py`), against the real
+index mirrored into Postgres with `reconstruct_n` so both backends answer from
+bit-identical vectors. 24,650 rows load in 46.6 s.
+
+**Latency is a wash and the write-up should say so.** FAISS p50 1.6 ms, pgvector p50
+1.7 ms, unfiltered, k=20. At this corpus size a flat inner-product scan and an HNSW index
+behind a socket are indistinguishable; pgvector's p95 is worse (4.5 ms vs 2.0 ms) and that
+is the only visible cost.
+
+**The prediction in pgvector_store.py's own docstring did not reproduce.** It argues that
+FAISS's post-filter — over-fetch `k * 20`, discard non-matches — returns fewer than k under
+a narrow filter, and that this is why the issuer filter needed a backoff path. On the 28
+golden-set questions where `filters_for()` actually fires, FAISS returned short **0 times
+out of 28.** An issuer is roughly a ninth of this corpus and 400 candidates is a wide net.
+That is consistent with the earlier finding that the backoff path fires 0/27 times, and it
+should be reported as the negative result it is.
+
+**The mechanism is real, and it is arithmetic, so it can be shown rather than argued.**
+The narrowest (ticker, form, year) cell holds 26 of 24,650 rows — 0.105% — and a
+400-candidate window expects 0.42 matches in it:
+
+| filter | rows | % corpus | faiss | pgvector |
+|---|---|---|---|---|
+| C 8-K 2026 | 26 | 0.105% | **0.0** | 20.0 |
+| DFS 8-K 2025 | 27 | 0.110% | **2.5** | 20.0 |
+| GS 8-K 2025 | 31 | 0.126% | **0.0** | 20.0 |
+
+Mean results returned against k=20, same predicate checked against `stores.base.matches`
+on both sides first. FAISS returns *nothing* where 26 matching rows exist, with no error —
+which is the honest argument for a real database, correctly labelled as a constructed case
+this project's filters do not currently reach.
+
+Agreement between the backends on the real filters: exact-order 0.941, set overlap 0.992.
+Both are reported, and the order figure is the one that means anything — HNSW is
+approximate and owes the flat index a close ordering, not an identical one.

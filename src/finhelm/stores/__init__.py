@@ -12,9 +12,6 @@ DEFAULT_EMBED_MODEL = "BAAI/bge-small-en-v1.5"
 INDEX_DIR = ROOT / "data" / "index"
 
 
-DEFAULT_EMBED_MODEL = "BAAI/bge-small-en-v1.5"
-
-
 def index_name(collection: str, strategy: str, contextual: bool = False,
                embed_model: str | None = None, chunk_tokens: int = 800) -> str:
     """Directory name for an index.
@@ -53,11 +50,19 @@ def load_store(collection: str, strategy: str, backend: str = "faiss",
         return FaissStore.load(INDEX_DIR / index_name(collection, strategy, contextual,
                                                       embed_model, chunk_tokens))
     if backend == "pgvector":
+        from ..config import EMBED_DIMS
         from .pgvector_store import PgVectorStore
 
+        # The table's vector column is sized here, before anything is embedded, so it has
+        # to come from the same table Config.embed_dim reads. Taking the constructor
+        # default instead would create vector(768) for a 384-dim model and reject every
+        # insert — with a Postgres error far from the line that chose the model.
+        model = embed_model or DEFAULT_EMBED_MODEL
         return PgVectorStore(collection=index_name(collection, strategy, contextual,
-                                                  embed_model, chunk_tokens))
+                                                   embed_model, chunk_tokens),
+                             dim=EMBED_DIMS[model])
     raise ValueError(f"unknown store backend: {backend}")
 
 
-__all__ = ["Hit", "VectorStore", "matches", "load_store", "index_name", "model_slug", "INDEX_DIR"]
+__all__ = ["Hit", "VectorStore", "matches", "load_store", "index_name", "INDEX_DIR",
+           "DEFAULT_EMBED_MODEL"]

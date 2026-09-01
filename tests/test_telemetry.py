@@ -68,3 +68,28 @@ def test_port_selects_the_protocol(endpoint, grpc):
     """4317 is gRPC and 4318 is HTTP; they are not interchangeable, and sending HTTP to
     4317 fails looking like an unreachable collector rather than a protocol mismatch."""
     assert endpoint.rstrip("/").endswith(":4317") is grpc
+
+
+def test_service_name_comes_from_the_environment(monkeypatch):
+    """Compose sets OTEL_SERVICE_NAME per service. Before this, setup() hardcoded
+    "finhelm", so api and ui registered under one name and their spans landed in a single
+    undifferentiated pile in Jaeger — which matters precisely because three compose
+    services run the same image."""
+    from finhelm.telemetry import resolve_service_name
+
+    monkeypatch.setenv("OTEL_SERVICE_NAME", "finhelm-ui")
+    assert resolve_service_name() == "finhelm-ui"
+
+
+def test_an_explicit_name_still_wins_over_the_environment(monkeypatch):
+    from finhelm.telemetry import resolve_service_name
+
+    monkeypatch.setenv("OTEL_SERVICE_NAME", "from-the-environment")
+    assert resolve_service_name("passed-explicitly") == "passed-explicitly"
+
+
+def test_service_name_falls_back_when_nothing_is_set(monkeypatch):
+    from finhelm.telemetry import DEFAULT_SERVICE_NAME, resolve_service_name
+
+    monkeypatch.delenv("OTEL_SERVICE_NAME", raising=False)
+    assert resolve_service_name() == DEFAULT_SERVICE_NAME
