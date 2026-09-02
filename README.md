@@ -139,54 +139,40 @@ attached, and it runs on every pull request rather than when someone remembers.
 
 ```mermaid
 flowchart TB
-    subgraph ING [" 1 · Ingestion "]
-        direction LR
-        SEC[SEC EDGAR<br/>10-K · 10-Q · 8-K] --> NORM[Normalise<br/>selectolax, section split]
-        CFPB[CFPB complaints] --> NORM
-        FOMC[FOMC statements] --> NORM
-        NORM --> CH[Semantic chunking<br/>800 tokens · contextual headers]
+    SEC[SEC EDGAR<br/>10-K, 10-Q, 8-K] --> NORM[Normalise and section-split]
+    CFPB[CFPB complaints] --> NORM
+    FOMC[FOMC statements] --> NORM
+    NORM --> CH[Semantic chunking<br/>800 tokens, contextual headers]
+    CH --> COLF[filings<br/>24,650 chunks]
+    CH --> COLC[complaints<br/>18,498 chunks]
+
+    Q[Question] --> RT{Router<br/>keyword first, LLM if ambiguous}
+    RT --> AG{Worth splitting?<br/>deterministic pre-check}
+    AG -->|yes| DEC[Decompose into 1-4 sub-questions<br/>hard timeout, fails open]
+    AG -->|no| SQ[Single query]
+    DEC --> RET
+    SQ --> RET
+    COLF --> RET
+    COLC --> RET
+    RET[Hybrid retrieval per query<br/>BM25 + dense bge-base, RRF]
+    RET --> MF[Metadata filter<br/>issuer, form, year, with backoff]
+    MF --> XQ[Cross-query RRF across sub-questions]
+    XQ --> RR[Cross-encoder rerank<br/>sliding window, 512-token limit]
+    RR --> GEN[Generate with numbered sources]
+    GEN --> ANS[Answer + citations<br/>or INSUFFICIENT_CONTEXT]
+
+    subgraph EVAL [EVALUATION LOOP - what gates every merge]
+        GOLD[Golden set<br/>202 questions, 248 spans, 21 negatives] --> RUN[run_eval.py]
+        RUN --> DET[recall@16, MRR, citation validity<br/>abstention pair, route accuracy]
+        DET --> STAT[Wilson intervals, paired bootstrap<br/>split by span count]
+        STAT --> ML[MLflow]
+        STAT --> GATE{CI gate}
+        GATE -->|every push| T1[tests, 3 min, free]
+        GATE -->|pull requests| T2[deterministic eval<br/>committed fixture, free]
+        GATE -->|pull requests| T3[DeepEval + regression<br/>vs accepted baseline]
     end
 
-    CH --> COLF[(filings<br/>24,650 chunks)]
-    CH --> COLC[(complaints<br/>18,498 chunks)]
-
-    subgraph SERVE [" 2 · Serving "]
-        direction TB
-        Q[Question] --> RT{Router<br/>keyword heuristic first,<br/>LLM only when ambiguous}
-        RT --> AG{Worth splitting?<br/>deterministic pre-check}
-        AG -->|yes| DEC[Decompose<br/>1-4 sub-questions<br/>hard timeout, fails open]
-        AG -->|no| SQ[Single query]
-        DEC --> RET
-        SQ --> RET
-        RET[Hybrid retrieval per query<br/>BM25 + dense bge-base<br/>RRF fusion]
-        RET --> MF[Metadata filter<br/>issuer · form · year<br/>with backoff]
-        MF --> XQ[Cross-query RRF<br/>across sub-questions]
-        XQ --> RR[Cross-encoder rerank<br/>sliding window, 512-token limit]
-        RR --> GEN[Generate<br/>numbered sources, cited claims]
-        GEN --> ANS[Answer + citations<br/>or INSUFFICIENT_CONTEXT]
-    end
-
-    COLF -.-> RET
-    COLC -.-> RET
-
-    subgraph EVAL [" 3 · Evaluation — the loop that gates merges "]
-        direction LR
-        GOLD[Golden set<br/>202 questions · 248 gold spans<br/>21 negatives] --> RUN[run_eval.py]
-        RUN --> DET[Deterministic metrics<br/>recall@16 · MRR · citation validity<br/>abstention pair · route accuracy]
-        DET --> STAT[Wilson intervals<br/>paired bootstrap<br/>split by span count]
-        STAT --> ML[(MLflow)]
-        STAT --> GATE{{CI gate}}
-    end
-
-    ANS -.evaluated by.-> RUN
-    GATE -->|every push| T1[tests · ~3 min · free]
-    GATE -->|pull requests| T2[deterministic eval<br/>committed fixture · free]
-    GATE -->|pull requests| T3[DeepEval + regression<br/>vs accepted baseline]
-
-    classDef evalNode fill:#1f6feb,stroke:#0b3d91,color:#ffffff,stroke-width:2px
-    classDef gateNode fill:#8250df,stroke:#4c1d95,color:#ffffff,stroke-width:2px
-    class GOLD,RUN,DET,STAT,ML evalNode
-    class GATE,T1,T2,T3 gateNode
+    ANS --> RUN
 ```
 
 **Corpus:** 10 institutions — AXP, BAC, C, COF, DFS, GS, JPM, SYF, USB, WFC — as 24,650
