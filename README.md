@@ -36,25 +36,42 @@ as the answers.
 
 ## Results
 
-Measured on 202 questions and 248 gold spans. The headline run is
-`semantic-hybrid-rr-ctx-ag-winK16`.
+Every number below comes from one run — **`semantic-hybrid-rr-ctx-ag-final`**, 202
+questions, 248 gold spans, frozen at
+[`evals/results/semantic-hybrid-rr-ctx-ag-final.json`](evals/results/semantic-hybrid-rr-ctx-ag-final.json)
+and tagged. Nothing here is hand-edited or carried over from an earlier run.
 
 | Metric | Value | What it means |
 |---|---|---|
-| **recall@16 (macro)** | **0.7403** [0.682, 0.796] | Share of needed evidence that reaches the model |
+| **recall@16 (macro)** | **0.7403** [0.682, 0.793] | Share of needed evidence that reaches the model |
 | recall@16 (micro) | 0.7016 [0.642, 0.755] | Same, weighted by span rather than by question |
 | — single-span questions | 0.8246 (n=114) | |
 | — multi-span questions | 0.5970 (n=67) | The hard tier, and the honest one |
-| MRR | 0.4628 | |
+| MRR | 0.4633 | |
 | **citation validity** | **1.0000** | No answer ever cited a source that wasn't supplied |
-| abstention recall | 0.8571 | Of questions with no answer in the corpus, how many it declined |
+| abstention recall | 0.9048 | Of questions with no answer in the corpus, how many it declined |
 | over-refusal rate | 0.1160 | Of answerable questions, how many it wrongly declined |
+| citation density | 1.0420 | Citations per substantive claim |
 | route accuracy | 0.9485 | |
-| cost / query | $0.0340 | |
-| p50 latency | 24.7 s | Agentic path, cold cache, laptop CPU |
+| cost / query | $0.0339 | |
+| p50 latency | 32.3 s | Agentic path, cold cache, laptop CPU |
 
 Both macro and micro recall are reported because they diverge once span counts are
-unequal (0.740 vs 0.702), and quoting only the flattering one would be a choice.
+unequal (0.740 vs 0.702), and quoting only the flattering one would be a choice. **Macro
+is the headline throughout this repository**; micro appears beside it and never instead
+of it.
+
+**The retrieval half of this run is bit-identical to the run that preceded it by two
+weeks** — recall@16, both span tiers and micro recall all reproduce to four decimal
+places. That is worth more than any single number here: it means the ablation's
+comparisons were measuring configuration rather than run-to-run drift.
+
+Two figures did move, and both have a boring explanation rather than a story. **MRR shifted
++0.0005** while recall did not, which is what a rank permutation *inside* the top 16 looks
+like — recall@16 asks whether a span is in the set, MRR asks where. **Abstention recall
+went 0.8571 to 0.9048**, which is one question out of 21 negatives changing its mind
+(18/21 to 19/21). At n=21 a single flip is 4.8 points, so that is sampling noise in a
+generative model, not an improvement, and it is not claimed as one.
 
 ### How it got there
 
