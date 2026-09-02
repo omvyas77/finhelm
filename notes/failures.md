@@ -2435,3 +2435,38 @@ ranges have no union that is correct and expressible), then retrieves with the s
 original query. Retrieve-only, ~30 minutes. That arm separates "better queries" from
 "better filters" and should be run before +0.077 is quoted as decomposition's contribution
 anywhere.
+
+### The filter confound was real and turned out not to matter
+
+The agentic on/off delta was flagged as biased in decomposition's favour, because turning
+the flag off also removes per-sub-question metadata filtering — a known-positive whose
+coverage measured 75% on a compound question against 99% on sub-questions. The
+`--agentic-filters-only` arm holds the filters at the sub-question level and retrieves with
+the single original query, which separates the two.
+
+Paired bootstrap, recall@16, 10k rounds:
+
+| comparison | all (n=181) | multi-span (n=67) |
+|---|---|---|
+| filters only − agentic off | +0.0055 [−0.0055, +0.0166] **not resolved** | +0.0149 [−0.0149, +0.0448] **not resolved** |
+| agentic on − filters only | +0.0718 [+0.0331, +0.1105] resolved | +0.1791 [+0.0896, +0.2687] resolved |
+| agentic on − agentic off | +0.0773 [+0.0387, +0.1160] resolved | +0.1940 [+0.1045, +0.2836] resolved |
+
+**The filter half contributes nothing resolvable.** 93% of the total effect
+(0.0718 / 0.0773) survives with filters held constant, and the filter arm's own interval
+spans zero on both tiers. The caveat was worth raising and worth testing, and testing it
+retired it: the headline can be stated as **decomposition and cross-query fusion are worth
++0.0718 macro and +0.179 on multi-span**, with per-sub-question filtering adding nothing
+detectable on top.
+
+**This is not "filtering is worthless."** It is narrower and more interesting: `filters_for`
+on the compound question already captures nearly all the available recall, so the extra 24
+points of *coverage* the sub-questions provide do not convert into *recall*. Coverage was
+the wrong proxy for value — the additional filters land on questions that were already
+being answered, or narrow a pool that was already narrow enough. A component can be
+measurably more thorough and still be worth zero, and the only way to find that out is to
+hold it fixed and measure.
+
+Method note: three arms differing in one thing each, compared pairwise rather than a single
+on/off delta with a verbal caveat attached. The caveat was correct in direction and wrong
+in magnitude, and no amount of reasoning about it would have produced +0.0055.
