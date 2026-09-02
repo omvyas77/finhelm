@@ -62,6 +62,11 @@ from pathlib import Path
 
 import pytest
 
+# Module scope, because RELEVANCY_THRESHOLD below is derived from it. This is the
+# served config — the same object the service answers requests with — which is what
+# keeps the gate scoring the system that ships.
+from finhelm.api import CONFIG  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN = ROOT / "evals" / "golden_set.jsonl"
 
@@ -88,7 +93,16 @@ FAITHFULNESS_THRESHOLD = 0.65
 # So this number is only meaningful alongside top_k_context=8, and comparing it against a
 # run with a different context size would be comparing two different metrics. It is set
 # to catch "almost nothing relevant came back", not to grade precision.
-RELEVANCY_THRESHOLD = 0.10
+# Derived from the served context size rather than hardcoded, because the whole point of
+# the paragraph above is that this number is not portable across context sizes — and it
+# went stale exactly as predicted. 0.10 was calibrated when the service supplied 8 chunks.
+# The service now supplies 16, which halves the achievable ceiling to about 1/16 = 0.0625,
+# so the fixed threshold sat *above* what retrieval could reach and CI failed a question
+# scoring 0.087 — a score that is in fact better than one relevant chunk in sixteen.
+#
+# 0.8/k keeps the same relationship to the ceiling that 0.10 had at k=8, and moves with
+# top_k_context so a future budget change cannot silently reintroduce the same failure.
+RELEVANCY_THRESHOLD = round(0.8 / CONFIG.top_k_context, 4)
 
 
 def load_smoke_set() -> list[dict]:
