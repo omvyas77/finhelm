@@ -70,6 +70,47 @@ Each step is a paired comparison on the same golden set, not a re-tuned rerun.
 | Sliding-window cross-encoder reranking | 0.6160 | +0.0608 |
 | Context budget k=16 | **0.7403** | +0.1243 |
 
+### Where the agentic path helps, and where it does nothing
+
+The expensive path is only worth its cost where it is actually doing work, and the only way
+to know that is to run the control. Three arms, each differing from the next in one thing,
+compared by paired bootstrap over per-question recall@16 (10,000 rounds):
+
+| | all (n=181) | multi-span (n=67) | single-span (n=114) |
+|---|---|---|---|
+| **decomposition + cross-query fusion** | **+0.0718** `[+0.0331, +0.1105]` | **+0.1791** `[+0.0896, +0.2687]` | — |
+| per-sub-question metadata filtering | +0.0055 `[−0.0055, +0.0166]` | +0.0149 `[−0.0149, +0.0448]` | — |
+| **everything agentic, on vs off** | **+0.0773** `[+0.0387, +0.1160]` | **+0.1940** `[+0.1045, +0.2836]` | +0.0088 `[+0.0000, +0.0263]` |
+
+Bold intervals exclude zero. The rest do not.
+
+**The shape is the result, not the size.** Multi-span questions gain a fifth of a point;
+single-span questions move +0.0088 with an interval touching zero — indistinguishable from
+nothing. That was the prediction registered before the run, and its falsification condition
+was single-span moving too, which would have meant the delta came from something other than
+splitting the question. It did not move. `route_accuracy` is 0.9485 in both arms to four
+decimal places, independently confirming the flag does not disturb routing.
+
+**That asymmetry is what justifies the router.** Decomposition costs latency and API calls
+and buys nothing on the two thirds of questions that need one document. A deterministic
+pre-check decides whether a question is worth splitting before any model is called, which
+made decomposition fire 27 times instead of 53 — **49% faster and 49% cheaper with
+bit-identical recall.**
+
+**A caveat worth raising was worth testing, and testing retired it.** Turning the flag off
+removes three things at once, and one of them — per-sub-question filtering — had
+independent evidence of being valuable, with filter coverage of 75% on a compound question
+against 99% on sub-questions. So the on/off delta was biased in decomposition's favour by
+an unknown amount. Holding filters fixed at the sub-question level while retrieving with
+the single original query put a number on it: **+0.0055, interval spanning zero.** 93% of
+the effect survives.
+
+That result is narrower and more useful than "filtering is worthless": `filters_for` on the
+compound question already captures nearly all the available recall, so 24 extra points of
+*coverage* do not convert into *recall*. **Coverage was the wrong proxy for value.** A
+component can be measurably more thorough and still be worth zero, and no amount of
+reasoning about the caveat would have produced +0.0055 — only holding it fixed did.
+
 ### What was measured and rejected
 
 Kept here because negative results are most of the work and disappear from write-ups:
@@ -92,19 +133,60 @@ in the scoring stage**, not in retrieval width or in model scale.
 
 ## Architecture
 
+The serving path is the top two thirds. **The evaluation loop at the bottom is the part
+worth looking at** — it is what turns the rest from a demo into something with numbers
+attached, and it runs on every pull request rather than when someone remembers.
+
 ```mermaid
-flowchart LR
-    Q[Question] --> R{Router}
-    R -->|keyword heuristic,<br/>LLM only when ambiguous| D[Decompose<br/>gated by a<br/>deterministic pre-check]
-    D --> H
-    subgraph H [Per sub-question]
-        BM[BM25] --> F[RRF fusion]
-        DE[Dense · bge-base<br/>FAISS or pgvector] --> F
+flowchart TB
+    subgraph ING [" 1 · Ingestion "]
+        direction LR
+        SEC[SEC EDGAR<br/>10-K · 10-Q · 8-K] --> NORM[Normalise<br/>selectolax, section split]
+        CFPB[CFPB complaints] --> NORM
+        FOMC[FOMC statements] --> NORM
+        NORM --> CH[Semantic chunking<br/>800 tokens · contextual headers]
     end
-    F --> MF[Metadata filter<br/>issuer · form · year<br/>with backoff]
-    MF --> RR[Cross-encoder rerank<br/>sliding window, 512-token limit]
-    RR --> G[Generate<br/>numbered sources, cited claims]
-    G --> A[Answer + citations<br/>or INSUFFICIENT_CONTEXT]
+
+    CH --> COLF[(filings<br/>24,650 chunks)]
+    CH --> COLC[(complaints<br/>18,498 chunks)]
+
+    subgraph SERVE [" 2 · Serving "]
+        direction TB
+        Q[Question] --> RT{Router<br/>keyword heuristic first,<br/>LLM only when ambiguous}
+        RT --> AG{Worth splitting?<br/>deterministic pre-check}
+        AG -->|yes| DEC[Decompose<br/>1-4 sub-questions<br/>hard timeout, fails open]
+        AG -->|no| SQ[Single query]
+        DEC --> RET
+        SQ --> RET
+        RET[Hybrid retrieval per query<br/>BM25 + dense bge-base<br/>RRF fusion]
+        RET --> MF[Metadata filter<br/>issuer · form · year<br/>with backoff]
+        MF --> XQ[Cross-query RRF<br/>across sub-questions]
+        XQ --> RR[Cross-encoder rerank<br/>sliding window, 512-token limit]
+        RR --> GEN[Generate<br/>numbered sources, cited claims]
+        GEN --> ANS[Answer + citations<br/>or INSUFFICIENT_CONTEXT]
+    end
+
+    COLF -.-> RET
+    COLC -.-> RET
+
+    subgraph EVAL [" 3 · Evaluation — the loop that gates merges "]
+        direction LR
+        GOLD[Golden set<br/>202 questions · 248 gold spans<br/>21 negatives] --> RUN[run_eval.py]
+        RUN --> DET[Deterministic metrics<br/>recall@16 · MRR · citation validity<br/>abstention pair · route accuracy]
+        DET --> STAT[Wilson intervals<br/>paired bootstrap<br/>split by span count]
+        STAT --> ML[(MLflow)]
+        STAT --> GATE{{CI gate}}
+    end
+
+    ANS -.evaluated by.-> RUN
+    GATE -->|every push| T1[tests · ~3 min · free]
+    GATE -->|pull requests| T2[deterministic eval<br/>committed fixture · free]
+    GATE -->|pull requests| T3[DeepEval + regression<br/>vs accepted baseline]
+
+    classDef evalNode fill:#1f6feb,stroke:#0b3d91,color:#ffffff,stroke-width:2px
+    classDef gateNode fill:#8250df,stroke:#4c1d95,color:#ffffff,stroke-width:2px
+    class GOLD,RUN,DET,STAT,ML evalNode
+    class GATE,T1,T2,T3 gateNode
 ```
 
 **Corpus:** 10 institutions — AXP, BAC, C, COF, DFS, GS, JPM, SYF, USB, WFC — as 24,650
@@ -211,6 +293,49 @@ passage. A gate that fired without that pattern would be measuring something els
 
 ---
 
+## The analytics module, and the measurement that says it does not work
+
+[`analytics/complaint_disparity.py`](analytics/complaint_disparity.py) screens CFPB
+complaint outcomes for disparity: relief rate and timely-response rate per
+(company, product) cell, Wilson intervals, two-proportion z-tests against the same product
+at every *other* company, Benjamini-Hochberg across the whole family of tests.
+
+**It is a screening methodology, not a finding about any company.** A flagged cell warrants
+investigation; it does not establish that anyone was treated unfairly. Companies are named
+because the data names them, and no conclusory claim about any of them appears anywhere in
+this repository.
+
+The interesting output is a negative result about the screen itself:
+
+| outcome | cells tested | flagged after BH | median \|difference\| flagged / quiet |
+|---|---|---|---|
+| relief rate | 80 | **52 (65%)** | 0.158 / 0.047 |
+| timely response | 80 | **6 (8%)** | 0.027 / 0.009 |
+
+A screen that flags two thirds of what it tests is not detecting anomalies. The obvious
+suspicion is a power artifact — enough complaints and trivial gaps reach significance — and
+that is not what is happening: flagged cells differ by a median of **sixteen percentage
+points**, at similar cell sizes to the quiet ones. The effects are large and real.
+
+**The comparison group is wrong.** CFPB's product taxonomy has four values, and
+"Debt collection" contains national banks, debt buyers and credit bureaus — businesses
+whose *role* in a complaint differs so fundamentally that a shared relief rate is not a
+meaningful expectation. The same screen on timely response flags 8%, because timeliness is
+a procedural obligation that means the same thing for every firm regardless of business
+model. Same statistics, same cells; one usable screen and one unusable one, and the
+difference is entirely whether the peer group is real.
+
+The module prints that diagnostic on every run and warns when the flag share exceeds 25%.
+
+[`analytics/METHODOLOGY.md`](analytics/METHODOLOGY.md) covers ecological inference,
+selection bias, confounding, the SR 11-7 and ECOA/Reg B context, and the six things a
+fair-lending reviewer would demand next — none of which public complaint data supports.
+The ACS/ZCTA geographic join the build guide suggests is **deliberately not built**: it
+would be the most misreadable output in the repository, and doing it responsibly requires
+the caveats to travel with every number, which a CSV does not do.
+
+---
+
 ## Quickstart
 
 ```bash
@@ -283,8 +408,14 @@ Stated plainly, because they are the first thing a careful reader will look for.
   under 10% of their content. That is a property of how the set was generated, and it
   partly explains the 0.597 multi-span recall.
 - **One embedding model was evaluated end to end.** `bge-large` was never indexed.
-- **Complaint analysis is ecological.** Patterns across CFPB narratives are aggregate and
-  cannot support claims about individual cases.
+- **Complaint analysis is ecological, and its peer group is wrong.** CFPB's finest
+  geography is a 3-digit ZIP prefix, so any demographic association is area-level and
+  cannot support individual-level conclusions. Separately, the disparity screen flags 65%
+  of cells on relief rate because the four-value product taxonomy mixes banks, debt buyers
+  and credit bureaus into one baseline — measured, not suspected, and documented in
+  [`analytics/METHODOLOGY.md`](analytics/METHODOLOGY.md).
+- **The consumer-dispute rate cannot be computed.** CFPB stopped publishing
+  `consumer_disputed` in April 2017 and it is absent from this extract.
 - **Section parsing falls back on a minority of filings**, so some chunks carry a
   `full_document` section label rather than a real item.
 - **q055 is a deliberate failing test.** The system fabricates an executive's compensation
