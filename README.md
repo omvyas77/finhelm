@@ -262,7 +262,7 @@ required on macOS, where faiss-cpu and torch each load an OpenMP runtime into on
 and dense retrieval segfaults. Linux wheels carry no such conflict, so importing that
 workaround into CI bought nothing and pinned the cross-encoder to one of two vCPUs.
 
-**The floor of 0.80 against a measured 0.8667 is a tripwire, not a quality number** —
+**The floor of 0.80 against a measured 0.8167 is a tripwire, not a quality number** —
 retrieval against 1,903 chunks is far easier than against 24,650.
 
 The gate is built to be unable to pass quietly:
@@ -282,13 +282,24 @@ budget cut from 16 to 2 and nothing else changed:
 
 | config | recall@16 | multi-span | single-span | gate |
 |---|---|---|---|---|
-| `top_k_context=16` (shipped) | 0.8667 | 0.8125 | 0.9286 | **passes**, exit 0 |
-| `top_k_context=2` (broken) | 0.6667 | **0.4375** | 0.9286 | **fails**, exit 1 |
+| `top_k_context=16` (shipped) | 0.8167 | 0.8438 | 0.7857 | **passes**, exit 0 |
+| `top_k_context=2` (broken) | 0.5333 | **0.4375** | 0.6429 | **fails**, exit 1 |
 
 ```
 GATE FAILED
-  x recall_at_16 = 0.6667 is below the floor of 0.8000
+  x recall_at_16 = 0.5333 is below the floor of 0.8000
 ```
+
+Multi-span is hit about three times as hard as single-span (-0.406 against -0.143), which
+is the shape this break should produce: fewer context slots cost most where a question
+needs evidence from several documents.
+
+An earlier version of this table showed single-span recall as *identical* across the two
+arms, and that was a property of the fixture rather than of the change. The fixture was
+rebuilt when the judged tier turned out to be missing evidence for 7 of its 12 questions,
+and on the rebuilt corpus the gold chunk for a single-span question is not always inside
+the top 2, so cutting the budget costs that tier too. The claim was true of an artifact,
+and when the artifact changed it needed re-measuring rather than repeating.
 
 The damage lands where it should: single-span recall is untouched and multi-span nearly
 halves, because a smaller context budget can only hurt questions that need more than one

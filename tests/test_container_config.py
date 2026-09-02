@@ -215,3 +215,53 @@ def test_the_eval_gate_workflow_scores_the_served_config():
     assert ("--rerank" in gate) == CONFIG.rerank
     assert ("--contextual" in gate) == CONFIG.contextual_headers
     assert CONFIG.embed_model == _arg("EMBED_MODEL")
+
+
+def test_the_ci_fixture_covers_every_smoke_question():
+    """The judged gate retrieves from data/ci, so the fixture must contain the evidence
+    for the questions that gate asks.
+
+    It did not. The fixture was built from a stratified 40-question subset and the smoke
+    suite uses a different 12, of which only 5 overlapped — so 7 questions had their gold
+    spans excluded from the corpus by construction. The gate then failed 8 of 13 in CI
+    against 4 of 13 locally, and the difference was not answer quality: the system was
+    being asked about evidence that had been deliberately removed. A faithfulness score
+    measured that way is a fact about the fixture, not about the system.
+    """
+    import json
+    import sys
+
+    sys.path.insert(0, str(ROOT / "tests"))
+    from test_smoke_deepeval import load_smoke_set
+
+    subset = ROOT / "evals" / "ci_subset.jsonl"
+    assert subset.exists(), "evals/ci_subset.jsonl is missing"
+    covered = {json.loads(l)["id"] for l in subset.read_text().splitlines() if l.strip()}
+    smoke = {q["id"] for q in load_smoke_set()}
+
+    missing = sorted(smoke - covered)
+    assert not missing, (
+        f"{len(missing)} smoke questions are not in the CI fixture ({missing}); "
+        f"regenerate with scripts/make_ci_fixture.py, which includes them by construction")
+
+
+def test_the_committed_fixture_index_matches_the_committed_chunks():
+    """A stale index is the quietest possible failure: retrieval still returns results,
+    they are simply drawn from a corpus that no longer matches the chunk parquet the
+    metric reads. Counts have to agree."""
+    import json
+
+    import pandas as pd
+
+    ci = ROOT / "data" / "ci"
+    for parquet, index_dir in (
+        ("chunks_filings_semantic.parquet", "filings_semantic_ctx_bge-base-en-v15"),
+        ("chunks_complaints_fixed.parquet", "complaints_fixed_ctx_bge-base-en-v15"),
+    ):
+        chunks = pd.read_parquet(ci / "processed" / parquet)
+        meta = ci / "index" / index_dir / "meta.jsonl"
+        assert meta.exists(), f"{meta} missing; rebuild the fixture index"
+        n_indexed = sum(1 for line in meta.read_text().splitlines() if line.strip())
+        assert n_indexed == len(chunks), (
+            f"{index_dir} holds {n_indexed} vectors but {parquet} has {len(chunks)} "
+            f"chunks — the committed index is stale")

@@ -54,13 +54,40 @@ COLLECTIONS = {
 }
 
 
+def _smoke_ids() -> set[str]:
+    """Questions the DeepEval judged gate answers.
+
+    They must be in the fixture. The judged tier inherits FINHELM_DATA_DIR from the
+    workflow, so it retrieves from this corpus — and when the fixture was built from the
+    stratified subset alone, 7 of the 12 smoke questions had their gold spans excluded by
+    construction. The suite then failed 8 of 13 in CI while failing 4 of 13 locally, and
+    the difference was not answer quality: the system was being asked questions whose
+    evidence had been deliberately removed from the corpus it was given.
+    """
+    path = ROOT / "tests" / "smoke_set.jsonl"
+    if path.exists():
+        return {json.loads(l)["id"] for l in path.read_text().splitlines() if l.strip()}
+    import sys as _sys
+    _sys.path.insert(0, str(ROOT / "tests"))
+    from test_smoke_deepeval import load_smoke_set  # noqa: E402
+
+    return {q["id"] for q in load_smoke_set()}
+
+
 def pick_questions(rows: list[dict], seed: int) -> list[dict]:
     rng = random.Random(seed)
-    chosen: list[dict] = []
+    by_id = {r["id"]: r for r in rows}
+
+    # The smoke set first and unconditionally, then the stratified sample fills the rest.
+    required = _smoke_ids() & set(by_id)
+    chosen: list[dict] = [by_id[i] for i in sorted(required)]
+
     for kind, quota in QUOTA.items():
-        pool = [r for r in rows if r["type"] == kind]
+        have = sum(1 for r in chosen if r["type"] == kind)
+        pool = [r for r in rows if r["type"] == kind and r["id"] not in required]
         rng.shuffle(pool)
-        chosen.extend(pool[:quota])
+        chosen.extend(pool[: max(0, quota - have)])
+
     chosen.sort(key=lambda r: r["id"])
     return chosen
 
