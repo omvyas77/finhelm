@@ -2501,3 +2501,34 @@ condemned something that worked. The project's earlier substitute failures produ
 **positives**: set overlap that looked healthy, a gate that passed, a control that looked
 like a control. A bad proxy is not biased toward optimism; it is just uninformative, and
 uninformative evidence is as capable of destroying good work as of protecting bad work.
+
+### The XPASS that would have retired the hallucination guard
+
+The judged tier reported `[XPASS(strict)]` on q055 — the tracked Jamie Dimon fabrication —
+which is precisely the signal the marker was built to send: *fixed, remove me*. The Day 2
+note even says so in those words.
+
+It is not fixed. The Day 4.4 final run against the real 24,650-chunk index still answers
+q055 with "$43,000,000 total compensation for fiscal year 2025", itemised, without
+abstaining.
+
+The hallucination is corpus-dependent. q055 is `unanswerable` and has no gold spans; the
+fabrication is assembled from a plausible-but-irrelevant passage the retriever surfaces
+from the full index. The CI fixture holds 1,903 chunks and does not contain it, so on the
+fixture the system abstains correctly and the strict xfail flips to XPASS.
+
+Deleting the marker on that evidence would have retired the project's only tracked
+instance of the exact failure the system exists to prevent — and it would have been done
+for the most persuasive possible reason, which is a green test telling you to.
+
+Two changes. The xfail now applies only when not running against the fixture, so CI stops
+reporting an XPASS it cannot substantiate. And a free test in the every-push tier asserts
+the hallucination is *still present* in the frozen final run, so the marker can only be
+removed once the real corpus agrees — at which point that test fails and tells you to
+remove both.
+
+**The general form, which is the fourth variant of this project's standing rule:** a test
+that encodes a known failure is a claim about a specific system on a specific corpus. Run
+it somewhere else and it can pass for reasons that have nothing to do with the failure
+being fixed. An xfail is as much a validator as an assertion, and needs pinning to the
+thing it describes just as much.

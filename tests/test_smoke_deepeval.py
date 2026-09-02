@@ -251,13 +251,30 @@ def test_abstention_within_budget(answers):
 # within a week; a tracked known failure does not.
 KNOWN_HALLUCINATION = {"q055"}
 
+# ...but only against the real corpus, and that distinction is load-bearing.
+#
+# The hallucination is corpus-dependent. q055 is an `unanswerable` question with no gold
+# spans, and the fabrication is built out of a plausible-but-irrelevant passage the
+# retriever surfaces from the full 24,650-chunk index. The CI fixture holds 1,903 chunks
+# and does not contain that passage, so on the fixture the system abstains correctly and
+# the strict xfail reports XPASS — which reads as "the bug is fixed, remove the marker".
+#
+# It is not fixed. The Day 4.4 final run against the real corpus still answers q055 with
+# "$43,000,000 total compensation for fiscal year 2025" and does not abstain. Deleting the
+# marker on the strength of a fixture run would retire the project's only tracked instance
+# of the exact failure this system exists to prevent.
+#
+# So the expectation applies where it can be evaluated. On the fixture the question still
+# runs and still has to pass; it is simply not *expected* to fail.
+RUNNING_ON_FIXTURE = bool(os.getenv("FINHELM_DATA_DIR"))
+
 
 @pytest.mark.slow
 @pytest.mark.parametrize(
     "question",
     [pytest.param(q, marks=pytest.mark.xfail(
         strict=True, reason="known hallucination — see notes/failures.md (Day 2)"))
-     if q["id"] in KNOWN_HALLUCINATION else q
+     if (q["id"] in KNOWN_HALLUCINATION and not RUNNING_ON_FIXTURE) else q
      for q in NEGATIVES],
     ids=lambda q: q["id"],
 )
