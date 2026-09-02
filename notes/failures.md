@@ -2470,3 +2470,34 @@ hold it fixed and measure.
 Method note: three arms differing in one thing each, compared pairwise rather than a single
 on/off delta with a verbal caveat attached. The caveat was correct in direction and wrong
 in magnitude, and no amount of reasoning about it would have produced +0.0055.
+
+### I used an unvalidated proxy to check a render, and it told me nothing
+
+The rewritten architecture diagram appeared not to render on GitHub: the mermaid iframe
+measured 180px tall and 0 wide, and a screenshot showed blank space where the picture
+should be. On that evidence the diagram was stripped of its `classDef` styling, cylinder
+and hexagon node shapes, dotted labelled edges, and per-subgraph `direction` overrides —
+the styling that made the evaluation loop visually prominent, which was the one thing the
+build guide asked the diagram to do.
+
+The evidence was worthless. Loading `github.com/mermaid-js/mermaid` — whose README
+diagrams unquestionably render — produced **the same 180px/0-width iframes**. That
+measurement is how this browser pane treats GitHub's cross-origin viewscreen iframe,
+regardless of what is inside it. It says nothing about any particular diagram.
+
+Two checks had already said the diagram was fine, and both were correct: it parsed under
+mermaid 11 and under mermaid 10, which is the era GitHub ships. The failing signal was the
+only one without a control behind it, and it was the one I acted on.
+
+**This is the standing rule about substitutes, in a new costume.** A browser pane stood in
+for GitHub's renderer; it looked like the real thing, produced a plausible negative, and
+had never been checked against a case with a known answer. The fix is the same one the
+other four instances needed: *before trusting a proxy's verdict, run it against an input
+whose answer you already know.* One navigation to a repo with working diagrams would have
+cost thirty seconds and saved the diagram's styling.
+
+Note also which direction the error ran. The proxy produced a **false negative** — it
+condemned something that worked. The project's earlier substitute failures produced false
+**positives**: set overlap that looked healthy, a gate that passed, a control that looked
+like a control. A bad proxy is not biased toward optimism; it is just uninformative, and
+uninformative evidence is as capable of destroying good work as of protecting bad work.
