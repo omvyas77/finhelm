@@ -11,7 +11,8 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from analytics.complaint_disparity import MIN_CELL, adjust, load, screen
+from analytics.complaint_disparity import (DEFAULT_SOURCE, MIN_CELL, adjust,
+                                           load, screen)
 
 
 def _frame(rows):
@@ -110,21 +111,57 @@ def test_an_obvious_disparity_is_flagged_and_matching_cells_are_not():
     assert not {c for c in flagged if c.startswith("NORMAL")}
 
 
-def test_in_progress_complaints_leave_the_denominator():
+# data/raw/ is gitignored — the CFPB extract is a rebuildable artifact, like the FAISS
+# index — so a runner has no copy of it. The first version of these three tests called
+# load() directly and passed locally while failing in CI on a missing file: the same
+# "the local filesystem papers over it" failure as the PR gate that scored the wrong
+# config for the life of its file.
+#
+# The fix is not to skip all three. Two of them assert things about load()'s *behaviour*
+# and can be checked against a synthetic extract anywhere; only the third asserts
+# something about the real data and genuinely needs it.
+
+def _write_extract(path, rows):
+    pd.DataFrame(rows).to_parquet(path, index=False)
+    return path
+
+
+def test_in_progress_complaints_leave_the_denominator(tmp_path):
     """Counting an unresolved complaint as "no relief" would understate relief for
     whichever company happens to have open cases on the extract date."""
-    df = load()
+    src = _write_extract(tmp_path / "x.parquet", [
+        {"company": "A", "product": "Card", "company_response": "In progress",
+         "timely": "Yes", "zip_code": "12345"},
+        {"company": "A", "product": "Card", "company_response": "Closed with explanation",
+         "timely": "Yes", "zip_code": "12345"},
+    ])
+    df = load(src)
     assert "In progress" not in set(df["company_response"])
+    assert len(df) == 1
 
 
-def test_loaded_data_has_the_outcome_columns_and_a_zip3():
-    df = load()
+def test_load_derives_the_outcome_columns_and_a_three_digit_zip(tmp_path):
+    src = _write_extract(tmp_path / "x.parquet", [
+        {"company": "A", "product": "Card",
+         "company_response": "Closed with monetary relief", "timely": "Yes",
+         "zip_code": "12345"},
+        {"company": "B", "product": "Card", "company_response": "Closed with explanation",
+         "timely": "No", "zip_code": "12345"},
+    ])
+    df = load(src)
     assert {"relief", "on_time", "zip3"} <= set(df.columns)
+    assert list(df["relief"]) == [True, False]
+    assert list(df["on_time"]) == [True, False]
     assert df["zip3"].dropna().str.len().eq(3).all()
 
 
+@pytest.mark.skipif(not DEFAULT_SOURCE.exists(),
+                    reason=f"CFPB extract not present ({DEFAULT_SOURCE.name} is gitignored)")
 def test_the_dispute_rate_is_absent_from_the_source_rather_than_dropped():
     """The build guide asks for a consumer-dispute rate. CFPB stopped publishing the field
-    in April 2017; this asserts the reason it is missing is the data, not an oversight."""
-    df = load()
-    assert "consumer_disputed" not in df.columns
+    in April 2017; this asserts the reason it is missing is the data, not an oversight.
+
+    Unlike the two above, this is a claim about the real extract, so it can only be
+    checked where the real extract is.
+    """
+    assert "consumer_disputed" not in load().columns
