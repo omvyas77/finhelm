@@ -44,10 +44,20 @@ import os
 # failures with asyncio CancelledError tracebacks and no metric score anywhere, which
 # reads exactly like the answers being unfaithful. They were not scored at all.
 #
-# Disabled rather than raised, because any number here is a guess about how many claims a
-# future answer will contain. The real bounds are pytest's own and the CI job timeout,
-# both of which fail loudly and say what they are.
-os.environ.setdefault("DEEPEVAL_PER_ATTEMPT_TIMEOUT_SECONDS_OVERRIDE", "None")
+# Set to a day, which is "no limit" in every sense that matters here, because the setting
+# cannot actually be switched off. DeepEval types it as Optional[float] with gt=0, and its
+# default of None means *no override* — so leaving it unset restores the 207s that caused
+# the cancellations. "None" and "" are both rejected by pydantic before any test runs.
+#
+# The first version of this line set the string "None" and was never executed locally
+# before being pushed: the local run that motivated it predates the line. CI validated it
+# on import and failed 11 of 13 with a ValidationError that named the setting, which is at
+# least a loud failure rather than a quiet one.
+#
+# The real bounds are pytest's own and the 60-minute CI job ceiling, both of which fail
+# loudly and say what they are. That ceiling is load-bearing and marked as such in the
+# workflow.
+os.environ.setdefault("DEEPEVAL_PER_ATTEMPT_TIMEOUT_SECONDS_OVERRIDE", "86400")
 from pathlib import Path
 
 import pytest

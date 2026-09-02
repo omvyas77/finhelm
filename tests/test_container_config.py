@@ -265,3 +265,36 @@ def test_the_committed_fixture_index_matches_the_committed_chunks():
         assert n_indexed == len(chunks), (
             f"{index_dir} holds {n_indexed} vectors but {parquet} has {len(chunks)} "
             f"chunks — the committed index is stale")
+
+
+def test_the_judged_suite_configures_deepeval_with_a_value_deepeval_accepts():
+    """Importing the judged suite must not raise, and its settings must validate.
+
+    The suite disables DeepEval's per-attempt timeout at module top. The first version set
+    the string "None" — which pydantic rejects, because the field is Optional[float] with
+    gt=0 — and it was never run locally before being pushed, since the local run that
+    motivated the line predates the line. CI failed 11 of 13 with a ValidationError naming
+    the setting.
+
+    This test costs nothing, needs no API key, and runs in the every-push tier, which is
+    where a configuration error in a 60-minute paid job should be caught.
+    """
+    import importlib
+    import os
+
+    module = importlib.import_module("test_smoke_deepeval")
+    importlib.reload(module)
+
+    from deepeval.config.settings import Settings
+
+    # Raises ValidationError if the module set something DeepEval cannot parse.
+    settings = Settings()
+
+    override = settings.DEEPEVAL_PER_ATTEMPT_TIMEOUT_SECONDS_OVERRIDE
+    assert override is not None, (
+        "leaving the override unset restores DeepEval's 207s per-attempt cancellation, "
+        "which is what the module top exists to avoid")
+    assert override > 3600, (
+        f"per-attempt timeout is {override}s; the suite needs it effectively unbounded, "
+        f"with the CI job ceiling as the real backstop")
+    assert os.environ.get("DEEPEVAL_PER_ATTEMPT_TIMEOUT_SECONDS_OVERRIDE")
