@@ -333,3 +333,42 @@ def test_the_relevancy_threshold_moves_with_the_context_budget():
     source = (ROOT / "tests" / "test_smoke_deepeval.py").read_text()
     assert "CONFIG.top_k_context" in source.split("RELEVANCY_THRESHOLD =")[1][:120], \
         "RELEVANCY_THRESHOLD must be derived from the served top_k_context"
+
+
+def test_the_known_hallucination_is_still_present_in_the_last_real_run():
+    """q055's xfail must describe reality, and reality here means the real corpus.
+
+    The judged tier runs against the 1,903-chunk CI fixture, which does not contain the
+    plausible-but-irrelevant passage the fabrication is built from — so on the fixture the
+    system abstains correctly and a strict xfail reports XPASS, which reads as "fixed,
+    delete the marker". It is not fixed: the Day 4.4 final run against the full index still
+    answers with a fabricated compensation figure and does not abstain.
+
+    This test is the thing that would stop the marker being deleted on the strength of a
+    fixture run. If it ever fails, the hallucination genuinely is gone and the marker
+    should go with it.
+    """
+    import json
+
+    from test_smoke_deepeval import KNOWN_HALLUCINATION
+
+    results = sorted((ROOT / "evals" / "results").glob("*-final.json"))
+    if not results:
+        pytest.skip("no frozen final run on disk")
+    records = {r["id"]: r for r in json.loads(results[-1].read_text())["records"]}
+
+    for qid in KNOWN_HALLUCINATION:
+        record = records.get(qid)
+        if record is None:
+            continue
+        assert record["abstained"] is False, (
+            f"{qid} now abstains against the real corpus — the known hallucination looks "
+            f"fixed. Verify against a fresh full run, then remove it from "
+            f"KNOWN_HALLUCINATION and delete this assertion.")
+
+
+def test_the_xfail_is_scoped_to_the_corpus_it_describes():
+    source = (ROOT / "tests" / "test_smoke_deepeval.py").read_text()
+    assert "RUNNING_ON_FIXTURE" in source, (
+        "the known-hallucination xfail must not apply when running against the CI "
+        "fixture, where the failure it describes cannot occur")
