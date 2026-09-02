@@ -1,15 +1,15 @@
 {
-  "run_name": "semantic-hybrid-rr-ctx-ag-winK16",
-  "timestamp": "2026-08-25T21:15:53",
+  "run_name": "semantic-hybrid-rr-ctx-ag-final",
+  "timestamp": "2026-09-01T23:46:31",
   "n_questions": 202.0,
   "retrieve_only": false,
   "recall_at_16": 0.7403314917127072,
   "recall_at_16_micro": 0.7016129032258065,
   "recall_at_16_single_span": 0.8245614035087719,
   "recall_at_16_multi_span": 0.5970149253731343,
-  "mrr": 0.4627811491761768,
+  "mrr": 0.4633178899062877,
   "citation_validity": 1.0,
-  "abstention_recall": 0.8571428571428571,
+  "abstention_recall": 0.9047619047619048,
   "route_accuracy": 0.9484536082474226,
   "over_refusal_rate": 0.11602209944751381
 }
