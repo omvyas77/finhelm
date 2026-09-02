@@ -298,3 +298,38 @@ def test_the_judged_suite_configures_deepeval_with_a_value_deepeval_accepts():
         f"per-attempt timeout is {override}s; the suite needs it effectively unbounded, "
         f"with the CI job ceiling as the real backstop")
     assert os.environ.get("DEEPEVAL_PER_ATTEMPT_TIMEOUT_SECONDS_OVERRIDE")
+
+
+def test_the_relevancy_threshold_is_reachable_at_the_served_context_size():
+    """A threshold above the metric's ceiling is a gate that can never pass.
+
+    ContextualRelevancy scores the fraction of supplied context that bears on the
+    question, so it is diluted by top_k_context: with roughly one relevant chunk among k,
+    the achievable score is about 1/k. The threshold was a fixed 0.10, calibrated when the
+    service supplied 8 chunks (ceiling ~0.125). The service now supplies 16, ceiling
+    ~0.0625 — so the fixed threshold sat *above* anything retrieval could reach, and CI
+    failed a question scoring 0.087, which is better than one relevant chunk in sixteen.
+
+    A gate that always fails is as useless as one that always passes, and worse than
+    either is one whose failure looks like an answer-quality problem.
+    """
+    from test_smoke_deepeval import RELEVANCY_THRESHOLD
+
+    from finhelm.api import CONFIG
+
+    ceiling = 1.0 / CONFIG.top_k_context
+    assert RELEVANCY_THRESHOLD < ceiling, (
+        f"threshold {RELEVANCY_THRESHOLD} is at or above the ~{ceiling:.4f} ceiling "
+        f"implied by top_k_context={CONFIG.top_k_context}; it can never be met")
+    # And not so far below that it stops catching "almost nothing relevant came back".
+    assert RELEVANCY_THRESHOLD > ceiling / 4, (
+        f"threshold {RELEVANCY_THRESHOLD} is far under the {ceiling:.4f} ceiling and "
+        f"would pass a retrieval returning nothing useful")
+
+
+def test_the_relevancy_threshold_moves_with_the_context_budget():
+    """Derived rather than hardcoded, so a future budget change cannot silently
+    reintroduce an unreachable threshold."""
+    source = (ROOT / "tests" / "test_smoke_deepeval.py").read_text()
+    assert "CONFIG.top_k_context" in source.split("RELEVANCY_THRESHOLD =")[1][:120], \
+        "RELEVANCY_THRESHOLD must be derived from the served top_k_context"
