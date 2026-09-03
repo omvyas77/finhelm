@@ -10,6 +10,15 @@ harness honest enough to say when it doesn't.**
 idle takes 60–90 seconds while the Space wakes and loads its models; later ones settle
 around 30 seconds on free-tier CPU.
 
+| recall@16 | citation validity | abstention recall | over-refusal | cost/query |
+|---|---|---|---|---|
+| **0.7403** [0.682, 0.793] | **1.0000** | 0.9048 | 0.1160 | $0.0339 |
+
+202 human-verified questions, 248 gold spans, 21 of them deliberately unanswerable. One
+frozen run; [a test asserts this README cannot quote a figure it did not
+produce](tests/test_readme_traces_to_a_run.py). Full table and what the numbers do *not*
+mean are [below](#results).
+
 Every answer is built only from passages retrieved out of real SEC filings, FOMC
 statements and CFPB consumer complaints, and every passage is shown to the reader with a
 link to the source document. When the retrieved passages don't contain the answer, the
@@ -18,7 +27,7 @@ system says so instead of guessing.
 > **Status: Days 1–4 of 5 complete.** Ingestion, the evaluation harness, the service,
 > observability, the five-service container stack, the CI gate, the Kubernetes
 > manifests and the analytics module all run and are verified against the real thing.
-> The demo is deployed. Remaining: the write-up. Sections below flag what is measured
+> The demo is deployed and the write-up is done. Remaining: a walkthrough video. Sections below flag what is measured
 > against what is merely written.
 
 ---
