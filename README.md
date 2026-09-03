@@ -53,8 +53,13 @@ as the answers.
 
 **[The number that matters is what your RAG system does when retrieval fails](blog/measuring-refusal.md)**
 — on why unanswerable questions belong in a golden set, the abstention/over-refusal
-tradeoff, and the measurement no standard RAG metric produces: when this system fails to
-find the evidence, it answers anyway 60% of the time.
+tradeoff, and a measurement no standard RAG metric produces.
+
+The finding: this system refuses **90%** of questions that have no answer in the corpus,
+but only **40%** of the ones where retrieval quietly returned the wrong passages. It is
+good at *nothing is here* and weak at *something is here, but not the thing you asked
+for* — which is the harder and more dangerous case. Net, **10% of answerable questions
+(18 of 181) get an answer with no supporting evidence behind it.**
 
 ## Results
 

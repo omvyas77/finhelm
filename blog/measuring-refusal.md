@@ -11,6 +11,17 @@ them. It answered the other **18 anyway**.
 So when this system fails to find the evidence, it produces a confident, cited,
 well-formatted answer **60% of the time**.
 
+Two things keep that honest. It is conditional: retrieval fails on 30 of 181 answerable
+questions, so the unconditional rate of answering with nothing behind it is **10%**, not
+60%. And it sits beside a number that looks much better — on the 21 questions with no
+answer anywhere in the corpus, the system refuses **19 of them, 90%**.
+
+Put together those two figures say something sharper than either alone. The system is good
+at recognising *nothing is here* and weak at recognising *something is here, but not the
+thing you asked for*. The second case is harder, because the passages come back looking
+plausible, and it is the one that matters — a question with no answer is rare in
+production, and a question whose answer your retriever missed is not.
+
 That number does not appear in any standard RAG metric. You cannot get to it from recall,
 or faithfulness, or answer relevancy. You get to it by deliberately building a golden set
 that can expose it, and most golden sets cannot.
