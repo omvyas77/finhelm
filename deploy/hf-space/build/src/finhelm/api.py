@@ -23,7 +23,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from .config import Config
+from .config import SERVED, Config
 from .generate import answer
 from .telemetry import log_request, setup, span
 
@@ -52,11 +52,10 @@ app = FastAPI(
 # and was never run end-to-end, so shipping it would mean serving an unmeasured pipeline
 # alongside a measured quality claim. The gap is worth about +0.017 of pool recall and can
 # be adopted the moment a real run confirms it.
-CONFIG = Config(
-    chunking="semantic", retriever="hybrid", rerank=True, agentic=True,
-    contextual_headers=True, embed_model="BAAI/bge-base-en-v1.5",
-    top_k_context=16,
-)
+# Re-exported from config.py, which is where the served configuration lives so that
+# knowing what ships does not require importing a web framework. `api.CONFIG` remains the
+# canonical name every validator is pinned to.
+CONFIG = SERVED
 
 
 if TRACING:

@@ -3,11 +3,10 @@ title: finhelm
 emoji: 📊
 colorFrom: blue
 colorTo: gray
-sdk: streamlit
-sdk_version: 1.62.0
-app_file: app.py
+sdk: docker
+app_port: 7860
 pinned: false
-short_description: Question answering over US bank SEC filings that shows its work
+short_description: Q&A over US bank filings that shows its work
 ---
 
 # finhelm

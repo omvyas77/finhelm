@@ -72,7 +72,9 @@ def ask(question: str, agentic: bool) -> dict:
 
     import dataclasses
 
-    from finhelm.api import CONFIG
+    # config.py, not api.py: the demo ships without FastAPI, and reading the served
+    # config should not require a web framework. api.CONFIG is the same object.
+    from finhelm.config import SERVED as CONFIG
     from finhelm.generate import answer
 
     result = answer(question, dataclasses.replace(CONFIG, agentic=agentic))
