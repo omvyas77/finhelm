@@ -238,7 +238,7 @@ def log_mlflow(cfg: Config, summary: dict, records: list[dict], path: Path,
                 "per_question.json",
             )
     except Exception as exc:  # noqa: BLE001 - tracking must never break the run
-        # Loud, because quiet cost the entire Day 2 experiment record. MLFLOW_TRACKING_URI
+        # Loud, because quiet cost the entire an earlier stage experiment record. MLFLOW_TRACKING_URI
         # pointed at http://localhost:5000 with no server behind it, and on macOS port
         # 5000 is held by Control Center's AirPlay receiver — which answers, with 403.
         # So this did not fail like an unreachable host, it failed like a live server
@@ -262,13 +262,13 @@ def main() -> None:
     ap.add_argument("--k", type=int, default=None,
                     help="k for recall@k (default: cfg.top_k_context)")
     ap.add_argument("--top-k-context", type=int, default=None)
-    # The pool width the reranker gets to choose from. Never swept during Day 2 because it
+    # The pool width the reranker gets to choose from. Never swept during an earlier stage because it
     # had no flag, which left it the one retrieval knob fixed at its default through all
     # 18 cells.
     ap.add_argument("--top-k-retrieve", type=int, default=None)
     ap.add_argument("--embed-model", default=None)
     ap.add_argument("--no-query-prefix", action="store_true",
-                    help="control arm: embed the query bare, as Day 2 did")
+                    help="control arm: embed the query bare, as an earlier stage did")
     ap.add_argument("--cross-query-fusion", choices=["rrf", "interleave"], default=None)
     ap.add_argument("--no-filter-by-issuer", action="store_true",
                     help="control arm: search every issuer's filings, as before")

@@ -1,6 +1,6 @@
 """The one retrieval entry point the generator and the eval harness both call.
 
-Everything the Day 2 ablation varies — chunking strategy, retriever, reranking, routing —
+Everything the earlier ablation varies — chunking strategy, retriever, reranking, routing —
 is a field on Config, so the ablation loop is `for cfg in variants: retrieve(q, cfg)`
 rather than a different code path per row of the results table.
 """
@@ -35,7 +35,7 @@ class Retrieved:
     # selection. Carried because the two failure modes underneath a recall miss want
     # opposite fixes and are indistinguishable from `hits` alone: a gold document that
     # reached the pool and was then dropped is a fusion/rerank problem, while one that
-    # never reached it is a representation problem. Day 2 could not tell them apart.
+    # never reached it is a representation problem. an earlier stage could not tell them apart.
     candidates: list[Hit] = field(default_factory=list)
 
 
@@ -260,7 +260,7 @@ def retrieve(
                 per_collection.append(_from_collection(q, c, cfg, merged))
             # Fusing a single list would only overwrite each score with 1/(rrf_k + rank),
             # throwing away the cosine or BM25 value for no gain. Keep the real scores —
-            # Day 2 needs them to tell a confident hit from a barely-above-noise one.
+            # an earlier stage needs them to tell a confident hit from a barely-above-noise one.
             # Across collections it is the opposite: `filings` and `complaints` are separate
             # indexes whose scores are not on a comparable scale, so rank fusion is the only
             # defensible way to interleave them.

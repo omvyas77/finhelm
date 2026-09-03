@@ -5,7 +5,7 @@ string that names two facts living in two different filings. Embedded as one vec
 lands somewhere between them and retrieves neither side cleanly. That is not a ranking
 problem a reranker can repair: the query itself is the wrong shape.
 
-Measured on the Day 2 golden set, multi_hop was the worst-performing question type, and
+Measured on the an earlier stage golden set, multi_hop was the worst-performing question type, and
 7 of the 15 gold spans that never reached the candidate pool at all belonged to one.
 
 Two design constraints, both learned from the failures this project already logged:
@@ -17,7 +17,7 @@ Two design constraints, both learned from the failures this project already logg
   * It fails open. Any error, timeout, or unparseable reply returns the original question
     unchanged. A retrieval pipeline that stops answering because a helper model returned
     prose instead of JSON is strictly worse than one that answers the un-decomposed
-    question, which is what Day 2 already did successfully 41% of the time.
+    question, which is what an earlier stage already did successfully 41% of the time.
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ Reply with JSON only: {"sub_questions": ["...", "..."]}"""
 # two issuers named, comparative phrasing, or two distinct periods.
 #
 # It fails toward *not* splitting. A missed split falls back to the un-decomposed query,
-# which is the Day 2 behaviour and answers correctly 41% of the time; an unnecessary split
+# which is the an earlier stage behaviour and answers correctly 41% of the time; an unnecessary split
 # costs latency on every question forever. On the golden set this fires on 18 of the 20
 # two-span questions and skips 21 of the 34 single-span ones.
 
@@ -174,7 +174,7 @@ def decompose(question: str, max_sub_questions: int = 4,
     handle an empty list.
 
     `timeout_s` is the hard cap the build guide asks for, and it was missing: Config had
-    carried `agent_timeout_s = 30` since Day 1, every history row logged it, and nothing
+    carried `agent_timeout_s = 30` from the start, every history row logged it, and nothing
     read it. The planner therefore inherited the SDK's ten-minute default, so a hung call
     here would have held an /ask open for ten minutes before failing open to [question].
     """

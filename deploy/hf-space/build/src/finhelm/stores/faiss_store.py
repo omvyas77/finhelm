@@ -2,12 +2,12 @@
 
 `IndexFlatIP` over normalized vectors gives exact cosine similarity. Flat is the right
 choice at this corpus size — approximate indexes (HNSW/IVF) trade recall for speed that
-~31k vectors do not need, and an exact baseline keeps the Day 2 retrieval numbers
+~31k vectors do not need, and an exact baseline keeps the an earlier stage retrieval numbers
 attributable to the retriever rather than to index approximation.
 
 Filtering is the known weakness: FAISS has no metadata predicate, so filters are applied
 by over-fetching and post-filtering. That is precisely the gap pgvector closes, and
-measuring it is the point of the Day 3 comparison.
+measuring it is the point of the an earlier stage comparison.
 """
 
 from __future__ import annotations

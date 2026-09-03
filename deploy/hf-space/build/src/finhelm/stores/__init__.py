@@ -1,4 +1,4 @@
-"""Store selection by name, so `cfg.store` is the only thing that changes on Day 3."""
+"""Store selection by name, so `cfg.store` is the only thing that changes earlier."""
 
 from __future__ import annotations
 

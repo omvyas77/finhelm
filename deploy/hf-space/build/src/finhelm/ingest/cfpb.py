@@ -5,7 +5,7 @@ before release.
 
 Two payloads come out of one pass:
   * `cfpb_narratives.jsonl` — text for retrieval
-  * `cfpb_structured.parquet` — the full record for Day 4's disparity module
+  * `cfpb_structured.parquet` — the full record for an earlier disparity module
 
 API quirks worth knowing (all discovered empirically, see notes/failures.md):
   * `format=json` returns 404. The endpoint already returns JSON.

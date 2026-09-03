@@ -1,7 +1,7 @@
 """Classify every failure in a result file, with counts.
 
 This is the answer to "what is still wrong with it?", and it is a script rather than a
-paragraph in notes/failures.md because the point of the taxonomy is to be re-run: Day 3
+paragraph in notes/failures.md because the point of the taxonomy is to be re-run: an earlier stage
 exists to move these counts, and a hand-tallied table would be stale the first time
 retrieval changes.
 
@@ -146,7 +146,7 @@ def main() -> None:
     # The abstention policy's real error rate. Refusing when retrieval returned nothing is
     # not an over-refusal — it is the system declining to invent an answer, which is the
     # behaviour the golden set's negatives exist to reward. Only a refusal made while
-    # holding the evidence is a policy failure, and separating the two is what stops Day 3
+    # holding the evidence is a policy failure, and separating the two is what stops an earlier stage
     # from tuning the threshold when the actual problem is recall.
     with_evidence = [r for r in positives if gold_retrieved(r, args.k)]
     print(f"  abstained despite having gold    "

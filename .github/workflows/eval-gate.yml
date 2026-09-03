@@ -38,7 +38,7 @@ env:
   #
   # faiss-cpu and torch each ship an OpenMP runtime. On macOS both live in one process and
   # collide, and dense retrieval segfaults; OMP_NUM_THREADS=1 is the fix there. Linux
-  # wheels do not carry that conflict (verified Day 1), so importing the macOS workaround
+  # wheels do not carry that conflict (verified an earlier stage), so importing the macOS workaround
   # into CI bought nothing and cost half the machine: the cross-encoder ran on one of two
   # vCPUs at 49 s/question, and the 40-question gate projected to 33 minutes.
   #

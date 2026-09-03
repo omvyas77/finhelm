@@ -128,7 +128,7 @@ def main() -> None:
     # Refuse to shrink the golden set without being told to.
     #
     # This script assembles from the original hand-written sources, which is 75 questions.
-    # The set on disk is 202 — the Day 2 expansion was added by a different path and lives
+    # The set on disk is 202 — the earlier expansion was added by a different path and lives
     # only in the file. Running this script therefore *destroys* 127 questions, and it takes
     # no arguments, so anything that executes it destroys them: a shell loop checking that
     # every script imports cleanly ran `python scripts/assemble_golden.py --help`, which is

@@ -1,4 +1,4 @@
-"""Render evals/history.jsonl as the Day 2 ablation table.
+"""Render evals/history.jsonl as the earlier ablation table.
 
 Reads the history file rather than the results/ directory because history.jsonl is the
 append-only record: one line per run, never overwritten. `results/<run_name>.json` is
@@ -35,7 +35,7 @@ RETRIEVERS = ["bm25", "dense", "hybrid"]
 # invites the reader to blame the retriever for the generator's time.
 COLUMNS = [
     ("recall@5", "recall_at_5", ".3f"),
-    # Reported next to the point estimate, never below it in a footnote. Day 2's table
+    # Reported next to the point estimate, never below it in a footnote. an earlier table
     # ranked 18 cells on gaps of 0.01-0.07 against a golden set whose 95% interval is
     # ~0.22 wide, which made the ordering an artifact of sampling. Anyone reading a
     # recall column without its interval will draw the same wrong conclusion again.

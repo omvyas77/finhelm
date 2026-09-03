@@ -29,7 +29,7 @@ class Config:
     embed_model: str = "BAAI/bge-small-en-v1.5"
     store: str = "faiss"  # faiss | pgvector
     # Prepend issuer/form/period/section to a chunk before embedding it. Off reproduces
-    # the Day 2 indexes exactly; on requires an index built with it, which is why the
+    # the an earlier stage indexes exactly; on requires an index built with it, which is why the
     # flag also selects the index directory (see stores.index_name).
     contextual_headers: bool = False
     # BGE/E5 are trained asymmetrically: passages are embedded bare, queries carry a

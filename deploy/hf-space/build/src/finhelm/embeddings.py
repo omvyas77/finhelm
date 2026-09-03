@@ -85,8 +85,8 @@ def _encode_all(model, texts: list[str], batch_size: int, progress: bool) -> np.
 #
 # BGE v1.5 is trained with the query and the passage encoded differently: passages go in
 # bare, queries carry an instruction. Embedding both the same way — which is what this
-# module did through all of Day 2 — leaves the query vector in a slightly different region
-# than the training distribution. Measured on the Day 2 golden set it costs about 4 points
+# module did through all of an earlier stage — leaves the query vector in a slightly different region
+# than the training distribution. Measured on the an earlier stage golden set it costs about 4 points
 # of recall@5, which is small but free to recover and simply wrong to leave in.
 #
 # Keyed by model prefix because the correct string is model-specific (E5 wants "query: ",

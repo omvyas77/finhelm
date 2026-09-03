@@ -1,6 +1,6 @@
 """The HTTP surface, with the pipeline stubbed out.
 
-Day 3.1 shipped the API with no tests at all, which is how the `agentic` field went
+an earlier stage shipped the API with no tests at all, which is how the `agentic` field went
 missing: the Streamlit sidebar offered a toggle, the request body had nowhere to put it,
 and the service used its pinned config regardless. Nothing failed — the toggle just did
 nothing, in the only mode a deployment ever runs in.
