@@ -15,7 +15,6 @@ import re
 from dataclasses import dataclass
 
 import tiktoken
-from nltk.tokenize import sent_tokenize
 
 _ENC = tiktoken.get_encoding("cl100k_base")
 
@@ -75,6 +74,13 @@ def slug(value: str) -> str:
 
 def sentences(text: str) -> list[str]:
     """Sentence split, with a hard cap so a runaway 'sentence' can't blow a chunk."""
+    # Imported here, not at module scope, because sentence splitting is an *indexing*
+    # concern and this module is on the serving path only for chunks_name(). A top-level
+    # import made every serving process carry nltk and its punkt corpus for a function it
+    # never calls — which is how the deployed Space died on ModuleNotFoundError after
+    # being given a correctly minimal dependency set.
+    from nltk.tokenize import sent_tokenize
+
     out: list[str] = []
     for s in sent_tokenize(text):
         s = s.strip()

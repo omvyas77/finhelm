@@ -382,8 +382,11 @@ def test_the_demo_import_path_does_not_require_a_web_framework():
     importing a web framework to read a constant. The config now lives in config.py and
     api.CONFIG re-exports it.
 
-    Simulated rather than trusted: the import is attempted with fastapi, uvicorn and
-    starlette blocked at the meta-path, which is what the Space actually looks like. A
+    Simulated rather than trusted: the import is attempted with fastapi, uvicorn,
+    starlette and nltk blocked at the meta-path, which is what the Space actually
+    looks like. nltk is in the list because sentence splitting is an indexing concern
+    and the serving path must not need it — a module-level import of it in
+    chunking/__init__.py was the second thing to break the deployed demo. A
     plain import here would pass on any machine that happens to have FastAPI installed,
     which is every developer machine and none of the deployments.
     """
@@ -394,7 +397,7 @@ def test_the_demo_import_path_does_not_require_a_web_framework():
         "import sys\n"
         "class B:\n"
         "    def find_module(self, name, path=None):\n"
-        "        return self if name.split('.')[0] in ('fastapi','uvicorn','starlette') else None\n"
+        "        return self if name.split('.')[0] in ('fastapi','uvicorn','starlette','nltk') else None\n"
         "    def load_module(self, name):\n"
         "        raise ImportError(name)\n"
         "sys.meta_path.insert(0, B())\n"
