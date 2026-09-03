@@ -165,3 +165,19 @@ class Config:
                 "gen_model and judge_model must be different model families "
                 "(same-family judging produces self-preference bias)"
             )
+
+
+# The configuration this project actually serves.
+#
+# Defined here rather than in api.py because "what does this system ship?" is a question
+# the HTTP layer has no business owning. It lived in api.py until the Streamlit demo was
+# deployed with a serving-only dependency set and died on
+# `ModuleNotFoundError: No module named 'fastapi'` — importing a web framework to read a
+# constant. Anything that needs to know the served config now gets it from here:
+# api.CONFIG re-exports this object, so existing callers and the tests pinning validators
+# to it are unaffected.
+SERVED = Config(
+    chunking="semantic", retriever="hybrid", rerank=True, agentic=True,
+    contextual_headers=True, embed_model="BAAI/bge-base-en-v1.5",
+    top_k_context=16,
+)

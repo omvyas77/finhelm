@@ -1,19 +1,25 @@
 # finhelm
 
+[![eval-gate](https://github.com/omvyas77/finhelm/actions/workflows/eval-gate.yml/badge.svg?branch=main)](https://github.com/omvyas77/finhelm/actions/workflows/eval-gate.yml)
+[![live demo](https://img.shields.io/badge/demo-Hugging%20Face%20Space-blue)](https://huggingface.co/spaces/omvyas77/finhelm)
+
 **Question answering over US bank SEC filings that shows its work — and an evaluation
 harness honest enough to say when it doesn't.**
+
+**[Try it](https://huggingface.co/spaces/omvyas77/finhelm)** — the first question after
+idle takes 60–90 seconds while the Space wakes and loads its models; later ones settle
+around 30 seconds on free-tier CPU.
 
 Every answer is built only from passages retrieved out of real SEC filings, FOMC
 statements and CFPB consumer complaints, and every passage is shown to the reader with a
 link to the source document. When the retrieved passages don't contain the answer, the
 system says so instead of guessing.
 
-> **Status: Days 1–3 of 5 complete.** The service, the observability, the five-service
-> container stack, the CI gate and the Kubernetes manifests all run and are verified
-> against the real thing. Not yet done: the consumer-complaint analytics module, a public
-> deployment, and the final full evaluation. **There is no live demo link, because nothing
-> is deployed** — the Cloud Run and Space configs are written and unexecuted, and they say
-> so. Sections below flag what is measured against what is merely written.
+> **Status: Days 1–4 of 5 complete.** Ingestion, the evaluation harness, the service,
+> observability, the five-service container stack, the CI gate, the Kubernetes
+> manifests and the analytics module all run and are verified against the real thing.
+> The demo is deployed. Remaining: the write-up. Sections below flag what is measured
+> against what is merely written.
 
 ---
 
@@ -398,12 +404,25 @@ and the failure gives you nothing to go on — the PVC stays `Pending` reporting
 mentions the access mode.** Changing that one field to `ReadWriteOnce` bound it in six
 seconds.
 
-**Cloud Run and Hugging Face Space configs** are in [`deploy/cloudrun/`](deploy/cloudrun/)
-and [`deploy/hf-space/`](deploy/hf-space/) — and **neither is deployed.** There is no GCP
-project or Space yet, so no live URL exists and the cold-start figures in those READMEs
-are derived from local measurement rather than observed. The named risk is that a 5.76 GB
-image is large for scale-to-zero; if cold pulls prove too slow, the honest fixes are a
-serving-only image without the eval harness, or paying for `minScale: 1`.
+**The live demo runs on a Hugging Face Space**
+([`deploy/hf-space/`](deploy/hf-space/)) — a Docker Space carrying its own 209 MB index,
+because there is no API backend behind it and the hybrid retriever needs BM25 as well as
+FAISS. Its image installs a serving-only dependency set: the eval harness, MLflow, ragas
+and the langchain stack they pull in are about 1.5 GB of wheels a demo never executes, and
+a Space rebuilds on every push.
+
+Two things worth knowing if you deploy something similar. Hugging Face **no longer offers
+free Python Spaces** — only Static Spaces are free, and both SDKs that execute Python
+require a PRO subscription — so the "free, no billing" plan this project was built around
+had to be paid for. And the Space README's front matter enforces
+`short_description ≤ 60 characters`, checked by a pre-receive hook *after* the LFS upload
+completes, so a 63-character description costs you the full 494 MB push before it fails.
+
+**Cloud Run configs** are in [`deploy/cloudrun/`](deploy/cloudrun/) and are **not
+deployed** — the Space made them unnecessary for a demo. The cold-start figures there are
+derived from local measurement rather than observed, and the named risk stands: a 5.76 GB
+image is large for scale-to-zero, and if cold pulls proved too slow the honest fixes would
+be a serving-only image or paying for `minScale: 1`.
 
 Still to build: incremental re-indexing as new filings land, and a cache keyed on
 question + config.

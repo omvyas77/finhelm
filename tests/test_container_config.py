@@ -372,3 +372,48 @@ def test_the_xfail_is_scoped_to_the_corpus_it_describes():
     assert "RUNNING_ON_FIXTURE" in source, (
         "the known-hallucination xfail must not apply when running against the CI "
         "fixture, where the failure it describes cannot occur")
+
+
+def test_the_demo_import_path_does_not_require_a_web_framework():
+    """The Space installs a serving-only dependency set and has no FastAPI.
+
+    app.py read the served config from finhelm.api, which imports FastAPI, so the deployed
+    demo died on `ModuleNotFoundError: No module named 'fastapi'` at the first question —
+    importing a web framework to read a constant. The config now lives in config.py and
+    api.CONFIG re-exports it.
+
+    Simulated rather than trusted: the import is attempted with fastapi, uvicorn and
+    starlette blocked at the meta-path, which is what the Space actually looks like. A
+    plain import here would pass on any machine that happens to have FastAPI installed,
+    which is every developer machine and none of the deployments.
+    """
+    import subprocess
+    import sys
+
+    program = (
+        "import sys\n"
+        "class B:\n"
+        "    def find_module(self, name, path=None):\n"
+        "        return self if name.split('.')[0] in ('fastapi','uvicorn','starlette') else None\n"
+        "    def load_module(self, name):\n"
+        "        raise ImportError(name)\n"
+        "sys.meta_path.insert(0, B())\n"
+        "from finhelm.config import SERVED\n"
+        "from finhelm.generate import answer\n"
+        "print(SERVED.run_name())\n"
+    )
+    result = subprocess.run([sys.executable, "-c", program], capture_output=True,
+                            text=True, cwd=str(ROOT),
+                            env={"PYTHONPATH": str(ROOT / "src"), "PATH": "/usr/bin:/bin"})
+    assert result.returncode == 0, (
+        f"the demo's import path needs a web framework:\n{result.stderr[-600:]}")
+
+
+def test_the_served_config_lives_outside_the_http_layer():
+    from finhelm.api import CONFIG
+    from finhelm.config import SERVED
+
+    assert CONFIG is SERVED, "api.CONFIG must re-export config.SERVED, not redefine it"
+    source = (ROOT / "app.py").read_text()
+    assert "from finhelm.api import" not in source, (
+        "the Streamlit demo must not import finhelm.api; it ships without FastAPI")

@@ -17,7 +17,8 @@ STAGE="$(mktemp -d)/finhelm"
 
 command -v git-lfs >/dev/null || { echo "git-lfs required: brew install git-lfs"; exit 1; }
 
-huggingface-cli repo create finhelm --type space --space_sdk streamlit -y || true
+# streamlit is no longer an accepted SDK; the runtime is pinned by the Dockerfile.
+huggingface-cli repo create finhelm --type space --space_sdk docker -y || true
 git clone "https://huggingface.co/spaces/$SPACE" "$STAGE"
 
 cp -R "$BUILD"/. "$STAGE"/
