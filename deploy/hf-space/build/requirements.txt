@@ -1,0 +1,18 @@
+# Serving only. The eval harness, MLflow, ragas, deepeval and the langchain stack that
+# comes with them are ~1.5 GB of wheels a demo never executes, and a Space rebuilds on
+# every push.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.13.0
+streamlit==1.62.0
+sentence-transformers==6.0.0
+transformers==5.15.1
+faiss-cpu==1.15.0
+rank-bm25==0.2.2
+pandas==2.3.3
+pyarrow==25.0.1
+numpy==2.2.6
+anthropic==1.0.0
+python-dotenv==1.2.3
+selectolax==0.4.11
+tiktoken==0.14.0
+huggingface_hub==1.16.1
