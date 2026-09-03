@@ -47,6 +47,25 @@ def _final_run() -> dict:
     return finals[-1]
 
 
+def _final_records() -> list[dict]:
+    """The records of the run history says is final — resolved by name, never by glob.
+
+    `sorted(glob("*-final.json"))[-1]` looks like "the newest final run" and is actually
+    alphabetical order. Two files match that pattern here and the Day 2 one
+    (`semantic-hybrid-rr-final.json`, 75 questions) sorts last, so every check using that
+    idiom was reading a run from two weeks before the one the README quotes. The
+    hallucination guard passed against it for the wrong reason, since q055 fabricates in
+    both.
+
+    Same rule as everywhere else in this repo: identify the artifact, do not approximate it.
+    """
+    run = _final_run()
+    path = ROOT / "evals" / "results" / f"{run['run_name']}.json"
+    if not path.exists():
+        pytest.skip(f"{path.name} not on disk")
+    return json.loads(path.read_text())["records"]
+
+
 def _results_table() -> str:
     text = README.read_text()
     start = text.index("| Metric | Value")
@@ -91,3 +110,62 @@ def test_the_baseline_tracks_the_final_run():
     run = _final_run()
     assert baseline["run_name"] == run["run_name"]
     assert baseline["recall_at_16"] == pytest.approx(run["recall_at_16"], abs=1e-9)
+
+
+# ------------------------------------------------------------------- the blog post
+
+BLOG_CLAIMS = {
+    "0.7403": "recall_at_16",
+    "0.7016": "recall_at_16_micro",
+    "0.9048": "abstention_recall",
+    "0.1160": "over_refusal_rate",
+}
+
+
+@pytest.mark.parametrize("literal,key", BLOG_CLAIMS.items())
+def test_blog_post_figures_come_from_the_frozen_run(literal, key):
+    """The post is the most-read artifact and the least likely to be re-derived.
+
+    It quotes measurements in prose, where nothing recomputes them, so the same rule the
+    README is held to applies here: a number in the write-up must be one the frozen run
+    actually produced.
+    """
+    post = ROOT / "blog" / "measuring-refusal.md"
+    if not post.exists():
+        pytest.skip("no blog post")
+    run = _final_run()
+    if run.get(key) is None:
+        pytest.skip(f"{key} not measured")
+    assert literal in post.read_text(), f"post no longer quotes {key}"
+    assert float(literal) == pytest.approx(run[key], abs=5e-5), (
+        f"post quotes {literal} for {key}; run {run['run_name']} recorded {run[key]:.4f}")
+
+
+def test_blog_post_counts_match_the_records():
+    """The post's central claim — that retrieval failures become confident answers 60% of
+    the time — is a count over the run's records, not a logged metric. Recomputed here so
+    prose cannot drift from the data it describes."""
+    import json
+
+    import sys
+    sys.path.insert(0, str(ROOT / "evals"))
+    import metrics as M
+
+    post = ROOT / "blog" / "measuring-refusal.md"
+    if not post.exists():
+        pytest.skip("no blog post")
+    text = post.read_text()
+
+    records = _final_records()
+    answerable = [r for r in records
+                  if r["type"] not in ("unanswerable", "out_of_scope")]
+    missed = [r for r in answerable
+              if (M.recall_at_k(r["retrieved"], r["gold_spans"], 16) or 0) == 0]
+    abstained = [r for r in missed if r["abstained"]]
+    answered = len(missed) - len(abstained)
+
+    assert f"{len(answerable)} answerable" in text
+    assert f"**{len(missed)} where retrieval did not surface the evidence" in text
+    assert f"abstained on {len(abstained)}" in text
+    assert f"**{answered} anyway**" in text
+    assert f"**{round(100 * answered / len(missed))}% of the time**" in text

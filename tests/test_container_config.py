@@ -352,10 +352,19 @@ def test_the_known_hallucination_is_still_present_in_the_last_real_run():
 
     from test_smoke_deepeval import KNOWN_HALLUCINATION
 
-    results = sorted((ROOT / "evals" / "results").glob("*-final.json"))
-    if not results:
-        pytest.skip("no frozen final run on disk")
-    records = {r["id"]: r for r in json.loads(results[-1].read_text())["records"]}
+    # Resolved by the run_name history records, not by glob order: two files match
+    # *-final.json and the Day 2 one sorts last alphabetically, so this guard was reading
+    # a run from two weeks before the one the README quotes — and passing, because q055
+    # fabricates in both.
+    history = ROOT / "evals" / "history.jsonl"
+    rows = [json.loads(l) for l in history.read_text().splitlines() if l.strip()]
+    finals = [r for r in rows if r.get("run_name", "").endswith("-final")]
+    if not finals:
+        pytest.skip("no run tagged -final in history")
+    path = ROOT / "evals" / "results" / f"{finals[-1]['run_name']}.json"
+    if not path.exists():
+        pytest.skip(f"{path.name} not on disk")
+    records = {r["id"]: r for r in json.loads(path.read_text())["records"]}
 
     for qid in KNOWN_HALLUCINATION:
         record = records.get(qid)

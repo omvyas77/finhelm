@@ -40,6 +40,13 @@ as the answers.
 
 ---
 
+## Write-up
+
+**[The number that matters is what your RAG system does when retrieval fails](blog/measuring-refusal.md)**
+— on why unanswerable questions belong in a golden set, the abstention/over-refusal
+tradeoff, and the measurement no standard RAG metric produces: when this system fails to
+find the evidence, it answers anyway 60% of the time.
+
 ## Results
 
 Every number below comes from one run — **`semantic-hybrid-rr-ctx-ag-final`**, 202
