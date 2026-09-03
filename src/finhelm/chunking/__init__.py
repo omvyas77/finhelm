@@ -1,4 +1,4 @@
-"""One interface over three chunking strategies, so Day 2 can ablate them.
+"""One interface over three chunking strategies, so an earlier stage can ablate them.
 
     chunk(doc, cfg) -> list[Chunk]
 

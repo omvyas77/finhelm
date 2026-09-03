@@ -10,6 +10,7 @@ the library directly otherwise, so `streamlit run app.py` works on its own.
 
 from __future__ import annotations
 
+import html
 import json
 import os
 import sys
@@ -27,7 +28,32 @@ sys.path.insert(0, str(ROOT / "src"))
 API_URL = os.getenv("FINHELM_API_URL")
 HISTORY = ROOT / "evals" / "history.jsonl"
 
-st.set_page_config(page_title="finhelm", page_icon="📊", layout="wide")
+st.set_page_config(page_title="finhelm", layout="wide",
+                   initial_sidebar_state="expanded")
+
+# A small amount of CSS, and only for things Streamlit gives no API for:
+# tightening the default vertical rhythm, giving the example buttons a calmer
+# resting state, and making the source cards read as cards rather than as a wall
+# of markdown. No colour is introduced that the theme does not already use, so
+# this stays legible in both light and dark.
+st.markdown("""
+<style>
+  .block-container { padding-top: 2.5rem; max-width: 1100px; }
+  h1 { font-weight: 650; letter-spacing: -0.02em; margin-bottom: 0.2rem; }
+  .lede { font-size: 1.05rem; line-height: 1.6; opacity: 0.85;
+          margin-bottom: 1.6rem; }
+  .stButton button { border-radius: 8px; font-weight: 500; min-height: 42px;
+                     transition: transform .06s ease; }
+  .stButton button:hover { transform: translateY(-1px); }
+  .source-card { border: 1px solid rgba(128,128,128,0.25); border-radius: 10px;
+                 padding: 0.9rem 1.1rem; margin-bottom: 0.7rem; }
+  .source-head { font-weight: 600; margin-bottom: 0.35rem; }
+  .source-meta { font-size: 0.82rem; opacity: 0.7; }
+  div[data-testid="stMetricValue"] { font-size: 1.35rem; }
+  section[data-testid="stSidebar"] { border-right: 1px solid
+                                     rgba(128,128,128,0.2); }
+</style>
+""", unsafe_allow_html=True)
 
 # Each example demonstrates a different behaviour, including two different reasons for
 # declining. Refusal is the least discoverable thing this system does and the most
@@ -46,7 +72,7 @@ EXAMPLES = [
      "What is Capital One's customer acquisition cost per new credit card account?",
      "A reasonable-sounding question about a number companies do not publish. "
      "It should refuse rather than estimate."),
-    ("Declines — outside the corpus",
+    ("Declines — not in corpus",
      "What guidance did Tesla give for vehicle deliveries in 2026?",
      "Tesla is not in this corpus at all. Different reason for refusing, same honesty."),
 ]
@@ -142,14 +168,14 @@ with st.sidebar:
 # -------------------------------------------------------------------------- main
 st.title("finhelm")
 st.markdown(
-    "**A question-answering system over US bank filings that shows its work.** "
-    "Every answer is built only from passages retrieved out of real SEC filings, Federal "
-    "Reserve statements and CFPB consumer complaints — and every one of those passages is "
-    "shown to you underneath, with a link to the original document."
+    '<div class="lede">Ask a question about US bank SEC filings. Every claim is cited to '
+    'the filing it came from, and every passage the answer was built from is shown below '
+    'it. When the filings do not contain the answer, it says so.</div>',
+    unsafe_allow_html=True,
 )
 
-st.subheader("Try one of these")
-st.caption("Each shows the system doing something different.")
+st.markdown("##### Try one of these")
+st.caption("Two of them should be refused. That is the point.")
 columns = st.columns(len(EXAMPLES))
 for column, (label, question, explanation) in zip(columns, EXAMPLES):
     with column:
@@ -206,20 +232,32 @@ if submitted and question.strip():
                 st.markdown(f"- {sub}")
 
     citations = result.get("citations") or []
-    with st.expander(f"The {len(citations)} passages it read", expanded=not result["abstained"]):
+    label = ("Sources this answer cites" if citations
+             else "No sources were cited")
+    with st.expander(f"{label} ({len(citations)})", expanded=not result["abstained"]):
         st.caption(
-            "Ranked by how well each passage matches the question. Debugging this system "
-            "means reading these — a wrong answer is nearly always a wrong passage."
+            "Ranked by how well each passage matches the question. A wrong answer is "
+            "nearly always a wrong passage, so this is where to look first."
         )
         for citation in citations:
             header = " · ".join(x for x in [citation.get("ticker"), citation.get("date"),
                                             (citation.get("section") or "").replace("_", " ")]
                                 if x)
-            st.markdown(f"**[{citation['marker']}]** {header} — score `{citation['score']}`")
-            if citation.get("url"):
-                st.markdown(f"[Open the original filing]({citation['url']})")
-            st.text(citation.get("text", "")[:900] or "")
-            st.divider()
+            # html.escape, because this is filing prose going into a raw HTML block and
+            # SEC text contains ampersands and angle brackets that would otherwise break
+            # the card or swallow the passage.
+            body = html.escape((citation.get("text") or "")[:900])
+            link = (f'<div class="source-meta"><a href="{citation["url"]}" '
+                    f'target="_blank">Open the original filing</a></div>'
+                    if citation.get("url") else "")
+            st.markdown(
+                f'<div class="source-card">'
+                f'<div class="source-head">[{citation["marker"]}] {html.escape(header)}</div>'
+                f'<div class="source-meta">relevance {citation["score"]}</div>'
+                f'<div style="margin:0.6rem 0; line-height:1.55;">{body}</div>'
+                f'{link}</div>',
+                unsafe_allow_html=True,
+            )
 
 st.caption(
     "Known limitation: on questions about facts companies do not disclose, the system "

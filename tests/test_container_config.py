@@ -137,7 +137,7 @@ def test_otel_endpoint_uses_the_grpc_port():
 def test_each_pipeline_service_gets_its_own_otel_service_name():
     """Three compose services run the same image, so the service name is the only thing
     separating their spans in Jaeger. It was set here and read nowhere — telemetry.setup()
-    hardcoded "finhelm" — so api and ui traces landed under one name until Day 3.5."""
+    hardcoded "finhelm" — so api and ui traces landed under one name for weeks."""
     names = {s: COMPOSE["services"][s]["environment"].get("OTEL_SERVICE_NAME")
              for s in PIPELINE_SERVICES}
     assert all(names.values()), f"a pipeline service has no OTEL_SERVICE_NAME: {names}"
@@ -341,7 +341,7 @@ def test_the_known_hallucination_is_still_present_in_the_last_real_run():
     The judged tier runs against the 1,903-chunk CI fixture, which does not contain the
     plausible-but-irrelevant passage the fabrication is built from — so on the fixture the
     system abstains correctly and a strict xfail reports XPASS, which reads as "fixed,
-    delete the marker". It is not fixed: the Day 4.4 final run against the full index still
+    delete the marker". It is not fixed: the an earlier stage final run against the full index still
     answers with a fabricated compensation figure and does not abstain.
 
     This test is the thing that would stop the marker being deleted on the strength of a
@@ -353,7 +353,7 @@ def test_the_known_hallucination_is_still_present_in_the_last_real_run():
     from test_smoke_deepeval import KNOWN_HALLUCINATION
 
     # Resolved by the run_name history records, not by glob order: two files match
-    # *-final.json and the Day 2 one sorts last alphabetically, so this guard was reading
+    # *-final.json and the an earlier stage one sorts last alphabetically, so this guard was reading
     # a run from two weeks before the one the README quotes — and passing, because q055
     # fabricates in both.
     history = ROOT / "evals" / "history.jsonl"

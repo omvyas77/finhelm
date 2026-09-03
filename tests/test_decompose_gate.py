@@ -69,7 +69,7 @@ def test_periods_counts_distinct_years_and_quarters():
 
 def test_gate_fails_toward_not_splitting():
     """An unrecognised phrasing must fall through to the un-decomposed query rather than
-    guessing: a missed split costs the Day 2 behaviour, an unnecessary one costs latency
+    guessing: a missed split costs the an earlier stage behaviour, an unnecessary one costs latency
     on every question forever."""
     assert not worth_splitting("Tell me about the thing in the document")
 
@@ -77,7 +77,7 @@ def test_gate_fails_toward_not_splitting():
 # --------------------------------------------------------------- the timeout
 
 def test_decompose_passes_its_timeout_to_the_model_call(monkeypatch):
-    """Config.agent_timeout_s existed from Day 1, was logged into every history row, and
+    """Config.agent_timeout_s existed from an earlier stage, was logged into every history row, and
     was read by nothing. The planner therefore ran under the SDK's ten-minute default,
     which on the request path means a hung call holds an /ask open for ten minutes before
     failing open."""

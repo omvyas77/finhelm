@@ -179,7 +179,7 @@ _CITATION = re.compile(r"\[S(\d+)\]")
 # A "claim" is a sentence long enough to assert something. Markdown headings, list
 # bullets and the short connective lines the model writes between sections are not
 # claims, and counting them as uncited claims understates citation density on exactly
-# the well-structured answers we want to reward. (Day 1 shipped without this filter and
+# the well-structured answers we want to reward. (an earlier stage shipped without this filter and
 # every heading in a well-formatted answer scored as an unsourced assertion.)
 _HEADING = re.compile(r"^\s*(?:#{1,6}\s|\*{1,2}[^*]+\*{1,2}\s*:?\s*$|[-*+]\s*$|\d+[.)]\s*$)")
 
@@ -219,7 +219,7 @@ def uncited_claims(answer: str) -> int:
 # ---------------------------------------------------------------------------------
 # Uncertainty
 # ---------------------------------------------------------------------------------
-# Day 2 ranked 18 configurations on a golden set holding 74 gold spans and reported
+# an earlier stage ranked 18 configurations on a golden set holding 74 gold spans and reported
 # differences as small as 0.01 as if they were results. At p ~ 0.39 the standard error
 # on recall is sqrt(.39*.61/74) ~ 0.057, so the 95% interval on the headline number is
 # roughly +/- 0.11 — wide enough to contain the top six rows of that table. The ranking
@@ -352,7 +352,7 @@ def route_accuracy(records: Iterable[dict]) -> float | None:
     Compared as sets: for a comparative question the correct answer is both collections,
     and a router that picks one of the two is wrong even though it overlaps the target.
     That specific failure — answering half a comparison confidently while citing only one
-    side — is the worst one this system produced on Day 1, so it must not earn partial
+    side — is the worst one this system produced earlier, so it must not earn partial
     credit here.
     """
     scored = [r for r in records if r.get("expected_source")]
@@ -367,7 +367,7 @@ def recall_by_span_count(records: Sequence[dict], k: int = 5,
     """Recall split by how many gold spans a question needs.
 
     This is the difficulty axis that actually matters, and reporting one pooled number
-    hides it completely. Measured on the Day 2 set: questions needing one span score
+    hides it completely. Measured on the an earlier stage set: questions needing one span score
     0.559, questions needing two score 0.175 — and 70% of the two-span questions retrieve
     *neither* side, not one of the two.
 

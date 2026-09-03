@@ -2,7 +2,7 @@
 
     python scripts/build_index.py --collection filings --strategy fixed
 
-Indexes live at data/index/{collection}_{strategy}/ so the Day 2 ablation can hold
+Indexes live at data/index/{collection}_{strategy}/ so the earlier ablation can hold
 several strategies side by side and swap between them by config alone.
 """
 

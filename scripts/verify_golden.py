@@ -11,7 +11,7 @@ exactly the ones a tired human reviewer misses:
   1. **Unfindable spans.** A gold span whose document is absent, or which no chunk of that
      document contains under `is_hit`, scores as a permanent miss for every configuration.
      That does not just add noise — it lowers the ceiling, so the whole ablation is
-     measured against a target no system could reach. The Day 2 set is clean on this
+     measured against a target no system could reach. The an earlier stage set is clean on this
      (ceiling 1.000, verified across all three chunking strategies); new rows must not
      break it.
 
@@ -58,7 +58,7 @@ TRIVIAL_OVERLAP = 0.80
 def load_chunks() -> dict[str, list[str]]:
     """doc_id -> every chunk text, across both collections under the `fixed` strategy.
 
-    `fixed` alone is enough: the Day 2 ceiling check found all three strategies identical
+    `fixed` alone is enough: the an earlier stage ceiling check found all three strategies identical
     at 1.000, because a span that survives one chunking survives all of them — chunk
     boundaries move, but no strategy deletes text.
     """

@@ -1,4 +1,4 @@
-"""Day 0.2 — verify EDGAR access before writing the ingester.
+"""an earlier stage — verify EDGAR access before writing the ingester.
 
 A missing or generic User-Agent returns 403. Over 10 req/sec blocks your IP ~10 min.
 """

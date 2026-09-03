@@ -1,7 +1,7 @@
 """Re-attach result files to MLflow after a tracking outage.
 
 Spec 2.5 is what turns "I tried some things" into "I ran a controlled experiment", and
-for most of Day 2 it recorded nothing: MLFLOW_TRACKING_URI pointed at http://localhost:5000
+for most of an earlier stage it recorded nothing: MLFLOW_TRACKING_URI pointed at http://localhost:5000
 with no MLflow server behind it, and on macOS that port belongs to Control Center's AirPlay
 receiver, which replies 403. Eighteen ablation cells logged into a void.
 

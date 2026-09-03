@@ -226,7 +226,7 @@ def test_answer_is_grounded(question, answers):
 
 # Measured floor, not an aspiration: with the current retriever roughly half the positive
 # slice abstains. The gate's job is to catch a change that makes this worse, so the budget
-# sits just above where the baseline sits. Tightening it is the point of Day 3.
+# sits just above where the baseline sits. Tightening it is the point of an earlier stage.
 MAX_ABSTENTIONS = 6
 
 
@@ -259,7 +259,7 @@ KNOWN_HALLUCINATION = {"q055"}
 # and does not contain that passage, so on the fixture the system abstains correctly and
 # the strict xfail reports XPASS — which reads as "the bug is fixed, remove the marker".
 #
-# It is not fixed. The Day 4.4 final run against the real corpus still answers q055 with
+# It is not fixed. The an earlier stage final run against the real corpus still answers q055 with
 # "$43,000,000 total compensation for fiscal year 2025" and does not abstain. Deleting the
 # marker on the strength of a fixture run would retire the project's only tracked instance
 # of the exact failure this system exists to prevent.
@@ -273,7 +273,7 @@ RUNNING_ON_FIXTURE = bool(os.getenv("FINHELM_DATA_DIR"))
 @pytest.mark.parametrize(
     "question",
     [pytest.param(q, marks=pytest.mark.xfail(
-        strict=True, reason="known hallucination — see notes/failures.md (Day 2)"))
+        strict=True, reason="known hallucination — see notes/failures.md"))
      if (q["id"] in KNOWN_HALLUCINATION and not RUNNING_ON_FIXTURE) else q
      for q in NEGATIVES],
     ids=lambda q: q["id"],

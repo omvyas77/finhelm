@@ -1,7 +1,7 @@
 """Thin LLM client wrappers.
 
 One place that loads `.env` and constructs clients, so the router, the generator and
-(from Day 4) the eval judge do not each grow their own copy of key handling and retry
+(from an earlier stage) the eval judge do not each grow their own copy of key handling and retry
 policy. Clients are cached because constructing one per request adds a TLS handshake to
 every call for no benefit.
 """
@@ -52,7 +52,7 @@ def _anthropic():
 # — the token counts below are measured, the rates are not.
 PRICING = {
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
-    # Retained after the switch to Sonnet so the Day 1/2 runs that were generated with
+    # Retained after the switch to Sonnet so the an earlier stage/2 runs that were generated with
     # Opus can still be recosted from their recorded token counts.
     "claude-opus-4-6": {"input": 5.00, "output": 25.00},
     "claude-haiku-4-5-20251001": {"input": 1.00, "output": 5.00},

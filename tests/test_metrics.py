@@ -120,7 +120,7 @@ def test_citation_validity_flags_invented_sources():
 
 
 def test_markdown_headings_do_not_count_as_uncited_claims():
-    """The Day 1 metric counted every heading as an unsourced assertion, which made
+    """The an earlier stage metric counted every heading as an unsourced assertion, which made
     well-structured answers look worse than unstructured ones."""
     answer = (
         "## How Banks Frame Late Fees\n"
@@ -166,7 +166,7 @@ def test_refuse_everything_scores_perfectly_on_one_and_terribly_on_the_other():
 
 
 def test_route_accuracy_gives_no_partial_credit_for_half_a_comparison():
-    """The Day 1 failure: routed a comparative question to complaints only, then wrote a
+    """The an earlier stage failure: routed a comparative question to complaints only, then wrote a
     section on how *banks* frame the issue citing only consumer narratives."""
     records = [
         {"route": ["complaints"], "expected_source": ["filings", "complaints"]},

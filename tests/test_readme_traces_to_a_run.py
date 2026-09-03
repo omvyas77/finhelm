@@ -22,6 +22,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
+METHOD = ROOT / "docs" / "METHOD.md"
 HISTORY = ROOT / "evals" / "history.jsonl"
 
 # README label -> metric key in the run record.
@@ -51,7 +52,7 @@ def _final_records() -> list[dict]:
     """The records of the run history says is final — resolved by name, never by glob.
 
     `sorted(glob("*-final.json"))[-1]` looks like "the newest final run" and is actually
-    alphabetical order. Two files match that pattern here and the Day 2 one
+    alphabetical order. Two files match that pattern here and the an earlier stage one
     (`semantic-hybrid-rr-final.json`, 75 questions) sorts last, so every check using that
     idiom was reading a run from two weeks before the one the README quotes. The
     hallucination guard passed against it for the wrong reason, since q055 fabricates in
@@ -67,7 +68,10 @@ def _final_records() -> list[dict]:
 
 
 def _results_table() -> str:
-    text = README.read_text()
+    """The full table now lives in docs/METHOD.md; the README carries a four-number
+    summary for someone skimming. Both are checked — a figure a reader meets first is the
+    one most worth pinning to the run that produced it."""
+    text = METHOD.read_text()
     start = text.index("| Metric | Value")
     return text[start:text.index("\n\n", start)]
 
@@ -94,6 +98,26 @@ def test_the_readme_names_the_run_its_numbers_come_from():
     run = _final_run()
     assert run["run_name"] in README.read_text(), (
         "the README must name the run its results table comes from")
+
+
+ROUNDED = {
+    "74%": ("recall_at_16", 0),
+    "100%": ("citation_validity", 0),
+    "90%": ("abstention_recall", 0),
+}
+
+
+@pytest.mark.parametrize("shown,spec", ROUNDED.items())
+def test_readme_summary_figures_round_from_the_run(shown, spec):
+    """The README quotes rounded percentages so a skimmer can read them. Rounded is fine;
+    invented is not, so each one is recomputed from the frozen run."""
+    key, places = spec
+    run = _final_run()
+    if run.get(key) is None:
+        pytest.skip(f"{key} not measured")
+    expected = f"{round(run[key] * 100, places):.0f}%"
+    assert expected == shown, f"README shows {shown} for {key}; run rounds to {expected}"
+    assert shown in README.read_text(), f"README no longer shows {shown}"
 
 
 def test_the_frozen_result_file_is_committed():

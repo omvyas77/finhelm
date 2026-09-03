@@ -1,6 +1,6 @@
 """Contextual headers prepended to a chunk *before it is embedded*.
 
-The largest single failure bucket measured on Day 2 was "right document, wrong passage":
+The largest single failure bucket measured earlier was "right document, wrong passage":
 48% of missed gold spans came from a filing that retrieval had already surfaced, just not
 from the paragraph holding the answer. The cause is visible in the chunks themselves. A
 median semantic chunk is 196 words of the form

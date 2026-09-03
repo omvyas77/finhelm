@@ -1,6 +1,6 @@
 """Answer generation with machine-checkable citations.
 
-Two design choices carry the entire Day 4 evaluation:
+Two design choices carry the entire an earlier stage evaluation:
 
 Numbered sources ([S1]...[Sn]) make citation validity *countable*. A model that cites [S9]
 when eight sources were supplied has hallucinated in a way that is detectable without a
@@ -100,7 +100,7 @@ def answer(
 ) -> Answer:
     cfg = cfg or Config()
     # Minted here rather than at the API boundary: threading a trace id back through
-    # retrieval and generation after the fact is miserable, and Day 3 needs it on spans.
+    # retrieval and generation after the fact is miserable, and an earlier stage needs it on spans.
     trace_id = uuid.uuid4().hex[:16]
 
     started = time.monotonic()
@@ -115,7 +115,7 @@ def answer(
 
     if not found.hits:
         # Abstaining without calling the model keeps "retrieval found nothing" and "the
-        # model declined to answer" distinguishable in the Day 4 numbers. Collapsing them
+        # model declined to answer" distinguishable in the an earlier stage numbers. Collapsing them
         # would hide a retrieval outage as an abstention win.
         return Answer(
             answer=f"{ABSTAIN_PREFIX} retrieval returned no matching sources.",

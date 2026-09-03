@@ -6,7 +6,7 @@ work" is never a 10-K), so paying a network round trip on every request to learn
 would be a poor trade.
 
 The returned `Route` carries *why* it decided, not just what. That field becomes a trace
-span attribute on Day 3 and the debugging surface when an answer is wrong — "the answer
+span attribute earlier and the debugging surface when an answer is wrong — "the answer
 was bad" and "the router never looked at the right collection" are different bugs and
 you cannot tell them apart after the fact without this.
 """

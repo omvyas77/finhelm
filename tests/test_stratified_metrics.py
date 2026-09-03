@@ -1,6 +1,6 @@
 """Tests for the uncertainty and stratification helpers.
 
-These exist because Day 2 reported an 18-cell ranking whose gaps were smaller than its
+These exist because an earlier stage reported an 18-cell ranking whose gaps were smaller than its
 own confidence interval, and because the first attempt to measure decomposition read a
 field that was never recorded and concluded the feature had not run.
 """
