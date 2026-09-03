@@ -1,7 +1,7 @@
 # Failure log
 
 Every wrong answer, with the *mechanism* — not just "it was wrong."
-This file becomes the golden set (Day 2), the failure taxonomy (2.9), and the blog post (Day 5).
+This file became the golden set, the failure taxonomy, and the write-up.
 
 Format:
 
@@ -15,7 +15,7 @@ Mechanism vocabulary (keep it consistent so the taxonomy counts are meaningful):
 
 ---
 
-## Ingestion findings (Day 1.1)
+## Ingestion findings: SEC EDGAR
 
 **DFS is not in SEC's `company_tickers.json`.** Capital One completed its acquisition of
 Discover in May 2025, so the ticker is delisted. Historical filings remain under CIK
@@ -45,7 +45,7 @@ metadata one, and it was fixed by following the filing index to the EX-13 docume
 | WFC FY2025 | 74K chars | 941K chars |
 | USB FY2025 | 247K chars | 732K chars |
 
-## Ingestion findings (Day 1.4)
+## Ingestion findings: chunking
 
 Two dedupe bugs, both silent, both found by checking *which* records disappeared rather
 than trusting the drop count.
@@ -56,7 +56,7 @@ discarded as "duplicates." Fixed by appending the accession sequence:
 `JPM_8K_2026-07-23_000123`.
 
 **The 500-char prefix hash was destroying year-over-year sections.** This is the one that
-would have quietly ruined Day 2. SEC sections open with identical stock language every
+would have quietly ruined the evaluation. SEC sections open with identical stock language every
 year — *"The following discussion sets forth the material risk factors that could affect
 JPMorganChase's financial condition..."* — so hashing the first 500 characters made
 FY2024, FY2025 and FY2026 Risk Factors look like the same document. Three years collapsed
@@ -85,7 +85,7 @@ redundant.
 
 ---
 
-## Ingestion findings (Day 1.3)
+## Ingestion findings: FOMC statements
 
 **`format=json` returns 404.** It appears in the build guide's snippet. The endpoint
 already returns JSON; passing the parameter routes to a nonexistent export path. Found by
@@ -100,19 +100,19 @@ in a single request.
 **The sampling bug that mattered most.** The API sorts newest-first, so taking the first
 5,000 per product collapsed the sample to **2026-02-25 → 2026-07-29** — five months —
 even though `date_received_min=2023-01-01` was set. The filter was doing nothing. Every
-temporal question in the golden set, and the whole multi-year premise of the Day 4
+temporal question in the golden set, and the whole multi-year premise of the
 disparity module, would have been built on five months of data.
 
 Fixed by stratifying: one request per product × calendar quarter, ~358 each, 2023Q1
 through 2026Q2. Result is ~1,430 complaints per quarter, evenly spread.
 
 Residual bias, documented not fixed: within each quarter the sample is still newest-first,
-so records cluster toward quarter-end. Acceptable for retrieval; the Day 4 methodology
+so records cluster toward quarter-end. Acceptable for retrieval; the analytics methodology
 note should mention it.
 
 **`consumer_disputed` does not exist for this date range** (0/200 records). CFPB
 discontinued the field in 2017. The build guide lists consumer-dispute rate as one of
-three Day 4 metrics — that metric is not computable and the module should ship with
+three of the analytics metrics — that metric is not computable and the module should ship with
 relief rate and timely-response rate only.
 
 **26% of ZIP codes are masked** (`010XX` style). Enough full ZIPs remain for the
@@ -120,7 +120,7 @@ ZCTA-level demographic join, but the effective sample for the geographic layer i
 
 ---
 
-## Ingestion findings (Day 1.2)
+## Ingestion findings: CFPB complaints
 
 **Silent encoding corruption in FOMC text.** federalreserve.gov serves UTF-8 but omits
 `charset` from the Content-Type header, so `requests` falls back to ISO-8859-1 per the
@@ -145,7 +145,7 @@ This alone took extraction from 0% to 60%.
 
 ---
 
-## HTML extraction findings (Day 1.5/1.7)
+## HTML extraction findings
 
 Found while spot-checking BM25 output, not while writing the extractor. The lesson
 repeats: **row counts were correct the whole time; the text was wrong.**
@@ -195,7 +195,7 @@ since real questions say "late fees", not "late fee".
 
 ---
 
-## Day 1.9 spot-check — 15 questions
+## First spot-check — 15 questions
 
 Ran 15 questions across all three sources (4 filings single-hop, 2 temporal, 2 FOMC,
 3 complaints, 1 cross-source, 3 designed to be unanswerable).
@@ -233,7 +233,7 @@ Two distinct defects, and the second is the dangerous one:
    on a materially wrong answer.
 
 This is the strongest argument in the project for judged faithfulness metrics rather than
-citation-counting alone, and it belongs in the Day 2 golden set as a multi-hop case.
+citation-counting alone, and it belongs in the golden set as a multi-hop case.
 
 **Fixed (router half):** comparative phrasing ("differently", "versus", "compared to",
 "consistent with", ...) now overrides a one-sided keyword verdict and escalates to the LLM
@@ -242,7 +242,7 @@ the same question returns a genuinely two-sided answer citing SYF's $2.7B/$2.5B 
 income and the CFPB safe-harbor rule alongside the consumer narratives, 8/8 sources cited.
 
 The generation half is **not** fixed — the prompt does not require the model to check that
-it has evidence for every side of a comparison. Candidate Day 2 prompt change.
+it has evidence for every side of a comparison. Candidate prompt change.
 
 ### Performance bug — store reloaded on every query
 
@@ -252,22 +252,22 @@ spent ~70s on disk before embedding anything. Cached: 68.5s cold → 168ms warm.
 
 Worth noting the FAISS design tradeoff this exposes: the flat index keeps a full copy of
 the corpus text in memory to serve metadata, which is exactly the cost pgvector avoids on
-Day 3.
+Deferred to the serving work.
 
 ### Known measurement weakness — `uncited_sentences` over-counts
 
 The metric flags any 5+ word sentence with no `[S#]` marker, which catches markdown
 headings ("Key Disconnect") and summary transitions. Q12 scored 10 uncited sentences when
 the real number of uncited factual claims was near zero. It is a diagnostic today; it needs
-to exclude headings and non-assertive sentences before Day 4 treats it as a gate.
+to exclude headings and non-assertive sentences before it is treated as a gate.
 
 ---
 
-## Day 2
+## Building the evaluation harness
 
 ### Hallucinated executive compensation with a valid citation (q055)
 
-The single most useful result of Day 2, produced by the PR gate on its first real run.
+The single most useful result of the harness, produced by the PR gate on its first real run.
 
 Asked *"What was Jamie Dimon's total compensation for fiscal year 2025?"* — an
 `unanswerable` negative, because compensation lives in the DEF 14A proxy and the corpus
@@ -294,7 +294,7 @@ is why the negatives in the golden set assert abstention directly rather than be
 scored by an LLM: whether the system emitted `INSUFFICIENT_CONTEXT` is a fact, not an
 opinion.
 
-Tracked as a strict xfail in `tests/test_smoke_deepeval.py`. Candidate fixes for Day 3,
+Tracked as a strict xfail in `tests/test_smoke_deepeval.py`. Candidate fixes,
 in order of preference: require the model to quote the span supporting any figure before
 emitting it; add a document-type precondition (compensation questions require a DEF 14A
 in the context); raise `top_k_retrieve` so the abstention decision sees more evidence.
@@ -552,7 +552,7 @@ hit" is an assumption that deserves a test rather than an argument.
 ### Failure taxonomy (2.9) — `semantic-hybrid-rr`, 54 answerable + 21 negative
 
 Produced by `scripts/failure_taxonomy.py`, which is a script and not a tally in this file
-because Day 3 exists to move these numbers. Each failure is charged to its *earliest*
+because the serving work exists to move these numbers. Each failure is charged to its *earliest*
 cause — routing, then retrieval, then the abstention decision, then synthesis — because
 the categories overlap and independent counts produce a table that sums past 100% and
 cannot be used to prioritise.
@@ -566,7 +566,7 @@ cannot be used to prioritise.
     hallucinated on a negative         2  (10% of 21)   q055, q075
 
 **Retrieval is the whole problem: 29 of 54, 54%.** Everything else is a rounding error
-next to it. Day 3 should spend its budget on recall — query expansion, better fusion, more
+next to it. The The serving work should spend its budget on recall — query expansion, better fusion, more
 candidates before rerank — and not on the generator or the abstention threshold.
 
 Three things this separation makes visible that the aggregate metrics hide:
@@ -594,7 +594,7 @@ q054), and 5 of those 6 are retrieval misses rather than date confusion — the 
 spans two filings and retrieval surfaces at most one. Multi-hop is nearly as bad: 10 of 12
 fail, again dominated by retrieval. Both are the same underlying shortfall, that a single
 query embedding cannot fetch both halves of a comparison, which is the argument for the
-Day 4 decomposition step.
+the decomposition step.
 
 Counting method and its limits are documented in the script's docstring. The one worth
 repeating: `misrouted()` compares `set(expected_source) & set(route)`. An earlier ad-hoc
@@ -605,7 +605,7 @@ of 0.955 and was believed for several minutes anyway.
 ### Every MLflow run in the project was logged to macOS AirPlay
 
 Spec 2.5 is the one that "turns *I tried some things* into *I ran a controlled
-experiment*". For all of Day 2 it recorded nothing.
+experiment*". Throughout the ablation it recorded nothing.
 
 `MLFLOW_TRACKING_URI` was `http://localhost:5000` with no MLflow server behind it. On
 macOS, port 5000 belongs to Control Center's AirPlay receiver, which is listening, and
@@ -653,9 +653,9 @@ Two smaller things fell out of the same investigation:
   suffix, so a 5-question `--tag smoke` run landed in the experiment under the *same name*
   as the real 75-question cell. Now both use the tagged name.
 
-## Day 2.5: three predicted wins that the data refused to confirm
+## Three predicted wins that the data refused to confirm
 
-The Day 2 post-mortem produced a plan with a ranked set of fixes. Measuring them changed
+The the post-mortem produced a plan with a ranked set of fixes. Measuring them changed
 the ranking, and in two cases inverted it. Recording the predictions next to the outcomes,
 because the pattern — plausible mechanism, measurable, and wrong — is the point.
 
@@ -706,7 +706,7 @@ both survive so it can be re-tested on a larger set.
 ### Prediction 3: "the BGE query prefix is minor". Also wrong, in the other direction.
 
 `bge-small-en-v1.5` is trained asymmetrically and `encode()` embedded queries exactly like
-passages for all of Day 2. Dismissed in the plan as worth "~3 spans". Measured at the same
+passages throughout the ablation. Dismissed in the plan as worth "~3 spans". Measured at the same
 config, prefix off vs on: 0.3889 -> 0.4167, +0.0278, 95% CI [+0.0000, +0.0741], 2 gained,
 **0 lost**.
 
@@ -720,7 +720,7 @@ written.
 Every change measured this session lands between +0.018 and +0.028 with a 95% interval
 spanning roughly +/-0.06. That is not a coincidence about the changes; it is the resolution
 limit of a golden set with 74 gold spans. At p ~ 0.4 the Wilson interval on the headline
-number is [0.252, 0.465] — wide enough to contain the top six rows of the Day 2 ablation.
+number is [0.252, 0.465] — wide enough to contain the top six rows of the ablation.
 
 **The 18-cell ablation could not distinguish its own top six configurations**, and neither
 can any of this work. Reporting a winner from it was over-claiming.
@@ -765,7 +765,7 @@ What works: `python -u` writing straight to a log, harness-tracked, no pipes, an
 verified by log growth rather than by `%cpu` — which understates MPS work badly enough to
 read as stalled.
 
-## Question design was not the problem; span count was (Day 2 audit)
+## Question design was not the problem; span count was
 
 The hypothesis was that LLM-drafted questions were too long and compound, so that low
 recall partly measured question style rather than retrieval. The first cut supported it:
@@ -820,7 +820,7 @@ with 95% confidence and 80% power:
 
 There are 20. Nothing measured this session — query prefix, contextual headers, pool width,
 decomposition — produced an effect larger than 0.05, and none of them could have been
-resolved if it had. The Day 2 ablation ranked 18 cells on gaps smaller than this.
+resolved if it had. The the ablation ranked 18 cells on gaps smaller than this.
 
 The actionable form: ~45 multi-span questions makes effects of 0.15+ resolvable, which is
 a realistic authoring target. Chasing 0.05 effects needs 385 and is not worth it. So the
@@ -1031,7 +1031,7 @@ declining to answer from evidence it never retrieved. That is the right behaviou
 should not be tuned away — the abstention threshold is not the problem, recall is.
 
 Two negatives still get confident fabricated answers, q055 and q075 — the same two as
-Day 2, and q055 remains the deliberate strict xfail in the PR gate.
+the harness, and q055 remains the deliberate strict xfail in the PR gate.
 
 ### Contextual headers: rejected at n=74, resolved at n=248
 
@@ -1268,7 +1268,7 @@ filter can usefully narrow.
 
 **Where this leaves the system**, recall@8 on 202 questions / 248 gold spans:
 
-    Day 2 close          0.389   (recall@5, 74 spans, unresolvable interval)
+    harness close          0.389   (recall@5, 74 spans, unresolvable interval)
     + expanded golden    0.4171
     + contextual headers 0.4475
     + bge-base           0.4917
@@ -1283,7 +1283,7 @@ difficulty is not in how candidates are ordered or chosen.
 
 ## Widening a filtered pool makes multi-span worse — and that is the finding
 
-Day 2 rejected pool widening on an unfiltered pool, where k=50 admits distractors from
+the ablation rejected pool widening on an unfiltered pool, where k=50 admits distractors from
 every issuer. With issuer filtering the pool is high-precision, so widening should admit
 more of the *right* issuer's chunks. Measured beforehand: of the 44 multi-span gold spans
 that never reach the pool, a filtered search puts 21 within k=50 and 31 within k=100.
@@ -1315,7 +1315,7 @@ those can help a scorer that ranks the wrong thing highest.
 
 `bge-reranker-base` is the one component of this pipeline that has never been changed,
 while the embedder, the chunk text, the fusion, the query shape and the filter all have.
-It is also worth +0.157 — the single most valuable component measured on Day 2 — which
+It is also worth +0.157 — the single most valuable component measured on the evaluation harness — which
 made it look settled rather than unexamined.
 
 ## A bigger reranker does not help either — so it is not capacity
@@ -1345,7 +1345,7 @@ period, the answer-bearing passage is not in the top few.** Every intervention t
 worked on which candidates are present or how they are ordered relative to each other.
 None of them changes what a candidate *is*.
 
-`chunk_tokens` has never been swept. The Day 2 ablation varied chunking *strategy* —
+`chunk_tokens` has never been swept. The the ablation varied chunking *strategy* —
 fixed, semantic, sentence_window — at a fixed 800 tokens throughout, and 42% of all misses
 are "right document, wrong passage", which is the signature of chunks too coarse to
 separate one disclosure from the next. It is the only untested lever that changes the unit
@@ -1895,7 +1895,7 @@ model of the same family, a different RRF constant (+0.017), max-rank fusion (+0
 more candidates (negative). What has not been tried is anything that changes *what the
 scorer is asked* rather than which model answers it.
 
-## Day 3.5: four wirings that were wrong and produced no error
+## Four wirings that were wrong and produced no error
 
 Containerising the service found more bugs than it introduced, and all four share a shape
 this project keeps running into: the wrong thing did not fail, it just quietly did nothing.
@@ -1923,7 +1923,7 @@ configured to talk to a database and quietly talked to itself.
 `FINHELM_API_URL` — the toggle was inert. It rendered, it flipped, it changed no
 behaviour. The in-process path honoured it, which is exactly why nobody noticed.
 
-**`embed_dim` again, at the call site this time.** Day 3.4 turned `Config.embed_dim` into
+**`embed_dim` again, at the call site this time.** the serving work.4 turned `Config.embed_dim` into
 a derived property because a hardcoded 384 sat next to a 768-dim model for two weeks. The
 same disagreement was waiting one layer up: `load_store` constructed `PgVectorStore`
 without a dimension, taking the constructor's 768 default whatever model was requested.
@@ -2031,7 +2031,7 @@ Agreement between the backends on the real filters: exact-order 0.941, set overl
 Both are reported, and the order figure is the one that means anything — HNSW is
 approximate and owes the flat index a close ordering, not an identical one.
 
-## Day 3.6: the gate, and three ways today went wrong
+## The CI gate, and three ways it went wrong
 
 ### The CI gate cannot use the real corpus, and the spec's version gates nothing
 
@@ -2118,14 +2118,14 @@ flag against itself, and the honest description is not "the flag does not work" 
 "there are two distinct failures here and the flag only covers the first".
 
   1. **Initialization.** Two copies of `libomp.dylib` in one process abort with
-     `OMP: Error #15`. Fixed since Day 1 by the package `__init__`, and that is why the
+     `OMP: Error #15`. Fixed since ingestion by the package `__init__`, and that is why the
      project has run for weeks without seeing it.
   2. **Runtime threading, CPU only.** With `FINHELM_DEVICE=cpu`, torch actually creates
      its OpenMP thread pool, and the pools collide during execution rather than at load.
      Suppressing the init check does nothing for that. `OMP_NUM_THREADS=1` does, by
      leaving torch a single thread to schedule.
 
-The claim that this "only exists on the machines CI runs on" was also wrong. The Day 1
+The claim that this "only exists on the machines CI runs on" was also wrong. The ingestion
 note records that Linux wheels do not carry the duplicate-libomp conflict at all, so CI
 may well never have hit it. What is true is narrower and worth keeping: it appears only
 when torch runs on CPU, which is what CI does and what a Mac does not. `OMP_NUM_THREADS=1`
@@ -2172,7 +2172,7 @@ that file the DeepEval PR gate measured faithfulness and relevancy on a configur
 project has never shipped, and every number it produced described a different system.
 
 It passed locally the whole time, because a developer machine happens to have a
-`filings_fixed` index sitting on disk from the Day 2 ablation. It surfaced only in CI,
+`filings_fixed` index sitting on disk from the ablation. It surfaced only in CI,
 where the committed fixture contains exactly two indexes and FAISS said so:
 `could not open data/ci/index/filings_fixed/index.faiss`. The environment with *fewer*
 artifacts is the one that caught it — the richer machine hid the bug by having the wrong
@@ -2198,7 +2198,7 @@ run scored `recall_at_16 = 0.6667` on a GitHub runner, against `0.6667` measured
 laptop. Different OS, different CPU architecture, different thread count — same digits.
 A gate whose number moves with the machine cannot distinguish a regression from a runner.
 
-## Day 4: the judged gate was scoring a config the project never ships
+## The judged gate was scoring a config the project never ships
 
 `tests/test_smoke_deepeval.py` built its answers with a bare `Config()` —
 `fixed` chunking, dense retrieval, no reranking, bge-small, `top_k_context=8`. The service
@@ -2305,8 +2305,8 @@ Three times now a stated conclusion has been overturned by going back to the art
 - **The PR gate's config** was a bare `Config()` for the life of the file, so every quality
   gate the project passed was gating a system it never ran.
 
-And now a fourth, of the same shape but about a *result* rather than a component: Day 4.2's
-headline experiment was described as "already done" on the strength of the Day 2 finding
+And now a fourth, of the same shape but about a *result* rather than a component: the agentic work.2's
+headline experiment was described as "already done" on the strength of the finding
 that gating *when* `decompose` fires leaves recall bit-identical. That is a different
 question from what decomposition buys over not decomposing. Checking the history settled it
 in one query: 14 of 15 full-corpus runs are `agentic=True`, and the single `agentic=False`
@@ -2394,7 +2394,7 @@ is why it was trustworthy rather than merely encouraging.
 exact comparison exists — exact order, exact config, exact score, the exact level the code
 operates at — use it, and treat aggregate agreement as evidence of nothing.**
 
-## Day 4.2: what decomposition buys, measured against a real control
+## What decomposition buys, measured against a real control
 
 The control arm — `agentic=False`, everything else pinned to the served config,
 retrieve-only, all 202 questions — had never been run. Paired bootstrap over per-question
@@ -2505,10 +2505,10 @@ uninformative evidence is as capable of destroying good work as of protecting ba
 ### The XPASS that would have retired the hallucination guard
 
 The judged tier reported `[XPASS(strict)]` on q055 — the tracked Jamie Dimon fabrication —
-which is precisely the signal the marker was built to send: *fixed, remove me*. The Day 2
+which is precisely the signal the marker was built to send: *fixed, remove me*. The the evaluation harness
 note even says so in those words.
 
-It is not fixed. The Day 4.4 final run against the real 24,650-chunk index still answers
+It is not fixed. The the agentic work.4 final run against the real 24,650-chunk index still answers
 q055 with "$43,000,000 total compensation for fiscal year 2025", itemised, without
 abstaining.
 
