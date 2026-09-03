@@ -177,7 +177,7 @@ jobs:
         run: |
           python evals/run_eval.py \
             --chunking semantic --retriever hybrid --rerank --contextual \
-            --embed-model "$EMBED_MODEL" --top-k-context 16 \
+            --embed-model "$EMBED_MODEL" --top-k-context 2 --k 16 \
             --golden evals/ci_subset.jsonl \
             --deterministic-only --fresh --tag ci \
             --fail-on-fallback --allow-fallback complaints \
