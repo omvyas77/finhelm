@@ -169,41 +169,53 @@ attached, and it runs on every pull request rather than when someone remembers.
 
 ```mermaid
 flowchart TB
-    SEC[SEC EDGAR<br/>10-K, 10-Q, 8-K] --> NORM[Normalise and section-split]
-    CFPB[CFPB complaints] --> NORM
-    FOMC[FOMC statements] --> NORM
-    NORM --> CH[Semantic chunking<br/>800 tokens, contextual headers]
-    CH --> COLF[filings<br/>24,650 chunks]
-    CH --> COLC[complaints<br/>18,498 chunks]
+    SEC["SEC EDGAR: 10-K, 10-Q, 8-K"] --> NORM["Normalise and section-split"]
+    CFPB["CFPB complaints"] --> NORM
+    FOMC["FOMC statements"] --> NORM
+    NORM --> CH["Semantic chunking, 800 tokens, contextual headers"]
+    CH --> COLF["filings: 24,650 chunks"]
+    CH --> COLC["complaints: 18,498 chunks"]
 
-    Q[Question] --> RT{Router<br/>keyword first, LLM if ambiguous}
-    RT --> AG{Worth splitting?<br/>deterministic pre-check}
-    AG -->|yes| DEC[Decompose into 1-4 sub-questions<br/>hard timeout, fails open]
-    AG -->|no| SQ[Single query]
+    Q["Question"] --> RT{"Router: keyword first, LLM if ambiguous"}
+    RT --> AG{"Worth splitting? deterministic pre-check"}
+    AG -->|yes| DEC["Decompose into 1-4 sub-questions, hard timeout, fails open"]
+    AG -->|no| SQ["Single query"]
     DEC --> RET
     SQ --> RET
     COLF --> RET
     COLC --> RET
-    RET[Hybrid retrieval per query<br/>BM25 + dense bge-base, RRF]
-    RET --> MF[Metadata filter<br/>issuer, form, year, with backoff]
-    MF --> XQ[Cross-query RRF across sub-questions]
-    XQ --> RR[Cross-encoder rerank<br/>sliding window, 512-token limit]
-    RR --> GEN[Generate with numbered sources]
-    GEN --> ANS[Answer + citations<br/>or INSUFFICIENT_CONTEXT]
+    RET["Hybrid retrieval per query: BM25 plus dense bge-base, RRF"]
+    RET --> MF["Metadata filter: issuer, form, year, with backoff"]
+    MF --> XQ["Cross-query RRF across sub-questions"]
+    XQ --> RR["Cross-encoder rerank, sliding window, 512-token limit"]
+    RR --> GEN["Generate with numbered sources"]
+    GEN --> ANS["Answer plus citations, or INSUFFICIENT_CONTEXT"]
 
-    subgraph EVAL [EVALUATION LOOP - what gates every merge]
-        GOLD[Golden set<br/>202 questions, 248 spans, 21 negatives] --> RUN[run_eval.py]
-        RUN --> DET[recall@16, MRR, citation validity<br/>abstention pair, route accuracy]
-        DET --> STAT[Wilson intervals, paired bootstrap<br/>split by span count]
-        STAT --> ML[MLflow]
-        STAT --> GATE{CI gate}
-        GATE -->|every push| T1[tests, 3 min, free]
-        GATE -->|pull requests| T2[deterministic eval<br/>committed fixture, free]
-        GATE -->|pull requests| T3[DeepEval + regression<br/>vs accepted baseline]
+    subgraph EVAL["EVALUATION LOOP - what gates every merge"]
+        GOLD["Golden set: 202 questions, 248 spans, 21 negatives"] --> RUN["run_eval.py"]
+        RUN --> DET["recall@16, MRR, citation validity, abstention pair, route accuracy"]
+        DET --> STAT["Wilson intervals, paired bootstrap, split by span count"]
+        STAT --> ML["MLflow"]
+        STAT --> GATE{"CI gate"}
+        GATE -->|every push| T1["tests, 3 min, free"]
+        GATE -->|pull requests| T2["deterministic eval, committed fixture, free"]
+        GATE -->|pull requests| T3["DeepEval plus regression vs accepted baseline"]
     end
 
     ANS --> RUN
 ```
+
+<!-- Every label is quoted, and that is load-bearing rather than tidy. GitHub's mermaid
+     parses `@` as the LINK_ID token from the `id@` edge syntax, so an unquoted
+     `DET[recall@16, MRR, ...]` is a parse error and GitHub renders the raw source instead
+     of a diagram:
+
+       Parse error on line 26: ...py] RUN --> DET[recall@16, MRR,
+       Expecting 'AMP', 'COLON', 'PIPE', ... got 'LINK_ID'
+
+     Worth knowing: a local mermaid 11.4.1 render parses the unquoted version happily, so
+     a local check is not a check of what GitHub does. This was verified by reading
+     GitHub's own error, and the fix by looking at the rendered page afterwards. -->
 
 **Corpus:** 10 institutions — AXP, BAC, C, COF, DFS, GS, JPM, SYF, USB, WFC — as 24,650
 filing chunks plus 18,498 CFPB complaint chunks.
