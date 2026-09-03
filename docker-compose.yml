@@ -32,7 +32,13 @@ services:
   api:
     <<: *app-image
     container_name: finhelm-api
-    env_file: .env
+    env_file:
+      # Optional, because a clean clone has no .env and `docker compose up` refusing to
+      # start with a bare "env file not found" is a worse first experience than a stack
+      # that comes up and tells you what it is missing. Retrieval works without any key;
+      # only generation needs one, and it fails per-request with a legible error.
+      - path: .env
+        required: false
     environment:
       <<: *app-env
       OTEL_SERVICE_NAME: finhelm-api
