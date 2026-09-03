@@ -360,16 +360,28 @@ the caveats to travel with every number, which a CSV does not do.
 
 ```bash
 git clone https://github.com/omvyas77/finhelm && cd finhelm
-cp .env.example .env    # add ANTHROPIC_API_KEY and GOOGLE_API_KEY
+cp .env.example .env                      # add ANTHROPIC_API_KEY
+export FINHELM_DATA_DIR=$PWD/data/ci      # the committed 1,903-chunk fixture
 docker compose up -d
 ```
 
 Then: UI at `localhost:8501`, API at `localhost:8000/docs`, traces at `localhost:16686`,
 MLflow at `localhost:5001`.
 
-The indexes are build artifacts and are not in the repo (961 MB). Build them with
-`scripts/build_index.py`, or point `FINHELM_DATA_DIR` at the committed CI fixture in
-`data/ci` to run against the small corpus immediately.
+**That second line is not optional, and this was verified from an actual clean clone
+rather than assumed.** The real indexes are 961 MB of build artifact and are not in the
+repo, so without `FINHELM_DATA_DIR` the API starts, reports
+`{"status": "degraded", "index_present": false}`, fails its healthcheck — correctly — and
+the UI never starts, because it waits on an API that would abstain on every question. The
+committed `data/ci` fixture exists so a clone can run something real immediately; it is a
+small corpus, so answers are thinner than the measured numbers suggest.
+
+To run against the full corpus, build the indexes first with `scripts/build_index.py`.
+That is ~85 minutes on CPU and is the reason the fixture is committed at all.
+
+`.env` is optional to compose — the stack starts without it and only generation fails, per
+request, with a legible error. A clean clone used to hit
+`env file .env not found` and refuse to start at all, which told a new reader nothing.
 
 **On an 8 GB machine, give Docker at least 5 GB.** A single `/ask` peaks at 2.7 GiB: both
 models resident plus the FAISS index and its metadata.

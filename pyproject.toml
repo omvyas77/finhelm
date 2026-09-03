@@ -3,6 +3,14 @@ name = "finhelm"
 version = "0.1.0"
 description = "Finance-domain RAG assistant with a CI-gated evaluation harness"
 requires-python = ">=3.10"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Om Vyas" }]
+
+[project.urls]
+Homepage = "https://github.com/omvyas77/finhelm"
+Demo = "https://huggingface.co/spaces/omvyas77/finhelm"
+Methodology = "https://github.com/omvyas77/finhelm/blob/main/analytics/METHODOLOGY.md"
 
 [build-system]
 requires = ["setuptools>=68"]
