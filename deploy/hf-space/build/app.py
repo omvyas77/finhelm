@@ -27,6 +27,12 @@ sys.path.insert(0, str(ROOT / "src"))
 
 API_URL = os.getenv("FINHELM_API_URL")
 HISTORY = ROOT / "evals" / "history.jsonl"
+REPO_URL = "https://github.com/omvyas77/finhelm"
+
+# The public Space runs the pipeline in-process on the project's own API key, at about
+# $0.03 a question, so each browser session gets a fixed number of questions. 0 disables
+# the cap, which is what a local run with your own key wants.
+SESSION_LIMIT = int(os.getenv("FINHELM_SESSION_LIMIT", "10"))
 
 st.set_page_config(page_title="finhelm", layout="wide",
                    initial_sidebar_state="expanded")
@@ -130,7 +136,7 @@ with st.sidebar:
         "2. **Splits the question** if it needs facts from more than one document\n"
         "3. **Searches twice** — by meaning and by keyword — and merges the results\n"
         "4. **Re-reads the best candidates** closely and keeps the top 16\n"
-        "5. **Answers using only those passages**, citing each claim\n\n"
+        "5. **Answers using only those passages**, citing the ones it used\n\n"
         "If the passages do not contain the answer, it says so instead of guessing."
     )
 
@@ -142,16 +148,15 @@ with st.sidebar:
         left, right = st.columns(2)
         left.metric("Finds the evidence", f"{row.get('recall_at_16', 0):.0%}",
                     help="Share of the passages needed to answer that reach the model.")
-        right.metric("Citations valid", f"{row.get('citation_validity', 0):.0%}",
-                     help="Every source marker points at a real supplied source. "
-                          "Nothing invented.")
+        right.metric("Refuses when it shouldn't", f"{row.get('over_refusal_rate', 0):.0%}",
+                     help="Of questions the filings do answer, how many it wrongly "
+                          "declined. The cost of refusing readily.")
         left.metric("Refuses when it should", f"{row.get('abstention_recall', 0):.0%}",
                     help="Of questions with no answer in the corpus, how many it declined.")
         right.metric("Cost per question", f"${row.get('cost_usd_per_query', 0):.3f}")
         st.caption(
-            "Finding the evidence is the hard part and the honest number. When retrieval "
-            "works the answer is almost always right; when it fails the system usually "
-            "declines rather than inventing."
+            "Finding the evidence is the hard part. When it misses, the system sometimes "
+            "answers from a nearby passage instead of declining, so check the sources."
         )
     else:
         st.info("No evaluation on disk yet.")
@@ -168,9 +173,9 @@ with st.sidebar:
 # -------------------------------------------------------------------------- main
 st.title("finhelm")
 st.markdown(
-    '<div class="lede">Ask a question about US bank SEC filings. Every claim is cited to '
-    'the filing it came from, and every passage the answer was built from is shown below '
-    'it. When the filings do not contain the answer, it says so.</div>',
+    '<div class="lede">Ask a question about US bank SEC filings. The answer cites the '
+    'passages it was built from, and every one of them is shown below it with a link to '
+    'the filing. When the filings do not contain the answer, it says so.</div>',
     unsafe_allow_html=True,
 )
 
@@ -193,6 +198,12 @@ question = st.text_area(
 submitted = st.button("Ask", type="primary")
 
 if submitted and question.strip():
+    asked = st.session_state.get("asked", 0)
+    if SESSION_LIMIT and asked >= SESSION_LIMIT:
+        st.info(f"This demo answers {SESSION_LIMIT} questions per session, because each one "
+                f"costs real API credit. To keep going, run it yourself: {REPO_URL}")
+        st.stop()
+    st.session_state.asked = asked + 1
     with st.spinner("Searching filings, then reading the best passages..."):
         try:
             result = ask(question.strip(), agentic)
@@ -211,8 +222,8 @@ if submitted and question.strip():
         st.success("**Answer**")
         st.markdown(result["answer"])
         st.caption(
-            "Markers like [S1] refer to the numbered sources below. Every factual "
-            "sentence should carry one."
+            "Markers like [S1] refer to the numbered sources below. Not every sentence "
+            "carries one, so check figures against the sources."
         )
 
     if result.get("invalid_citations"):
@@ -260,7 +271,7 @@ if submitted and question.strip():
             )
 
 st.caption(
-    "Known limitation: on questions about facts companies do not disclose, the system "
-    "occasionally answers anyway from a plausible-looking passage. That failure is tracked "
-    "in the evaluation suite rather than hidden — see the abstention figure in the sidebar."
+    "Known limitation: when the right passage is not retrieved, the system sometimes "
+    "answers from a nearby one instead, such as a different year's filing, rather than "
+    "declining. Check that the sources below are the ones your question is about."
 )

@@ -1,7 +1,9 @@
-# Cloud Run deployment
+# Cloud Run configs (not deployed)
 
-The API, not the UI. The Streamlit demo goes to a Hugging Face Space that points at this
-service — see `../hf-space/README.md`.
+Configs for running the API on Cloud Run. **None of these commands has been run**, and no
+Cloud Run service exists; see the status section at the end. The live demo is the Hugging
+Face Space in `../hf-space/`, which runs the whole pipeline in-process and does not use
+this service.
 
 ## Why Cloud Run
 
@@ -42,9 +44,9 @@ concurrent requests on one instance is an OOM, not throughput. Cloud Run's own s
 handles concurrency by adding instances.
 
 **`minScale: 0`.** Scale-to-zero is why this fits a free tier, and the cost is a cold
-start of image pull plus ~20 s of model load. That is a deliberate trade for a portfolio
-demo and is documented in the Space README so a recruiter hitting a cold service does not
-read it as broken.
+start of image pull plus ~20 s of model load. That would be a deliberate trade for a
+low-traffic demo, and would need stating wherever the URL is shared so a cold service is
+not read as a broken one.
 
 ## Status: written, not deployed
 

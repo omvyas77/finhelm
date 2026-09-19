@@ -47,7 +47,8 @@ COPY --chown=user . .
 # request after a cold start pays it, which the README states plainly.
 ENV FINHELM_DATA_DIR=$HOME/app/data \
     FINHELM_DEVICE=cpu \
-    OMP_NUM_THREADS=2
+    OMP_NUM_THREADS=2 \
+    FINHELM_SESSION_LIMIT=10
 
 EXPOSE 7860
 

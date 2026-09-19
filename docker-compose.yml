@@ -47,7 +47,7 @@ services:
     volumes:
       # Read-only on purpose. The API reads FAISS indexes and chunk parquet and writes
       # neither; a rw mount would let a bug in a request path corrupt a 961 MB artifact
-      # that takes 85 minutes to rebuild.
+      # that takes about 90 minutes to rebuild.
       - ./data:/app/data:ro
       - ./evals:/app/evals:ro
     depends_on:
@@ -76,6 +76,8 @@ services:
       # would cost ~1.5 GB of duplicate resident weights on an 8 GB host for no benefit,
       # and would let the UI and the API drift onto different configs.
       FINHELM_API_URL: http://api:8000
+      # The per-session question cap exists for the public demo; here the key is yours.
+      FINHELM_SESSION_LIMIT: "0"
     ports:
       - "8501:8501"
     depends_on:
