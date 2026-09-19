@@ -67,8 +67,8 @@ def verify(config_path: str) -> None:
 
     # The check this step exists to make. EMBED_DIMS is what a store uses to size a vector
     # column before a single embedding exists, so nothing at runtime ever compares it
-    # against the model — a 384 sitting beside a 768-dim model stayed invisible until
-    # an earlier stage. Asserting it here means the image cannot ship with the two disagreeing.
+    # against the model — a 384 sitting beside a 768-dim model stays invisible until a store
+    # is built from it. Asserting it here means the image cannot ship with the two disagreeing.
     declared = config.EMBED_DIMS[embed_model]
     # Renamed in sentence-transformers 6; the old name warns but still works.
     actual = (embed.get_embedding_dimension()

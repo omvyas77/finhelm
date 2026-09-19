@@ -3,7 +3,7 @@
 A gate is the one piece of a project that nothing else checks. Every other test fails
 loudly when the code under it breaks; a broken gate fails by passing, silently, forever,
 while the workflow file continues to read exactly like a gate. This project has already
-shipped one of those — the spec's `--fail-under recall_at_5=0.75` names a metric this
+nearly shipped one of those: `--fail-under recall_at_5=0.75` names a metric this
 system does not produce, and a lenient implementation would have gone green on every push
 for the life of the repo.
 

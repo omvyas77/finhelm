@@ -158,7 +158,7 @@ def test_load_derives_the_outcome_columns_and_a_three_digit_zip(tmp_path):
 @pytest.mark.skipif(not DEFAULT_SOURCE.exists(),
                     reason=f"CFPB extract not present ({DEFAULT_SOURCE.name} is gitignored)")
 def test_the_dispute_rate_is_absent_from_the_source_rather_than_dropped():
-    """The build guide asks for a consumer-dispute rate. CFPB stopped publishing the field
+    """A disparity screen wants a consumer-dispute rate. CFPB stopped publishing the field
     in April 2017; this asserts the reason it is missing is the data, not an oversight.
 
     Unlike the two above, this is a claim about the real extract, so it can only be

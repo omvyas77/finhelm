@@ -32,7 +32,7 @@ from evals.metrics import is_hit  # noqa: E402
 EVALS = ROOT / "evals"
 PROCESSED = ROOT / "data" / "processed"
 
-# The composition the build guide specifies. Asserted rather than assumed, because the
+# The target composition of the 75-question set. Asserted rather than assumed, because the
 # drafting step silently produces fewer rows when candidates fail the verbatim check.
 TARGET = {"single_hop": 34, "multi_hop": 12, "temporal": 8, "unanswerable": 13, "out_of_scope": 8}
 

@@ -91,7 +91,7 @@ own characterisation of what it did, not an adjudicated outcome.
 
 ## The geographic layer, and why it is not built
 
-The build guide suggests joining ZIP-prefix complaint rates to ACS demographics at the
+The natural next step is joining ZIP-prefix complaint rates to ACS demographics at the
 ZCTA level. That join is **not implemented**, and the reason is worth stating rather than
 leaving as an omission: it would produce exactly the area-level demographic association
 whose limits the ecological-inference paragraph above describes, and it would be the most

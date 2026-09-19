@@ -7,7 +7,7 @@ in this file runs in milliseconds and catches most regressions.
 --------------------------------------------------------------------------------------
 Why ground truth is anchored on (doc_id, snippet) and NOT on chunk_id
 --------------------------------------------------------------------------------------
-The build guide's golden-set schema stores `expected_chunk_ids`. That does not survive
+The obvious golden-set schema stores `expected_chunk_ids`. That does not survive
 contact with the chunking ablation, and it fails *silently*, which is worse than failing.
 
 chunk_id is `{doc_id}_{section}_{NNN}` where NNN is the chunk's position within its
@@ -164,7 +164,7 @@ def mrr(retrieved: Sequence[dict], gold_spans: Sequence[dict],
     Reported alongside recall because they fail differently: recall says whether the
     evidence was in the context window at all, MRR says whether it was near the top.
     A reranker that reorders without adding anything moves MRR and leaves recall flat,
-    which is exactly the signal 2.8 is trying to isolate.
+    which is exactly the signal a rerank ablation is trying to isolate.
     """
     if not gold_spans:
         return None
@@ -179,7 +179,7 @@ _CITATION = re.compile(r"\[S(\d+)\]")
 # A "claim" is a sentence long enough to assert something. Markdown headings, list
 # bullets and the short connective lines the model writes between sections are not
 # claims, and counting them as uncited claims understates citation density on exactly
-# the well-structured answers we want to reward. (an earlier stage shipped without this filter and
+# the well-structured answers we want to reward. (The first version had no such filter, and
 # every heading in a well-formatted answer scored as an unsourced assertion.)
 _HEADING = re.compile(r"^\s*(?:#{1,6}\s|\*{1,2}[^*]+\*{1,2}\s*:?\s*$|[-*+]\s*$|\d+[.)]\s*$)")
 
@@ -219,7 +219,7 @@ def uncited_claims(answer: str) -> int:
 # ---------------------------------------------------------------------------------
 # Uncertainty
 # ---------------------------------------------------------------------------------
-# an earlier stage ranked 18 configurations on a golden set holding 74 gold spans and reported
+# The first ablation ranked 18 configurations on a golden set holding 74 gold spans and reported
 # differences as small as 0.01 as if they were results. At p ~ 0.39 the standard error
 # on recall is sqrt(.39*.61/74) ~ 0.057, so the 95% interval on the headline number is
 # roughly +/- 0.11 — wide enough to contain the top six rows of that table. The ranking
@@ -367,7 +367,7 @@ def recall_by_span_count(records: Sequence[dict], k: int = 5,
     """Recall split by how many gold spans a question needs.
 
     This is the difficulty axis that actually matters, and reporting one pooled number
-    hides it completely. Measured on the an earlier stage set: questions needing one span score
+    hides it completely. Measured on the 75-question set: questions needing one span score
     0.559, questions needing two score 0.175 — and 70% of the two-span questions retrieve
     *neither* side, not one of the two.
 

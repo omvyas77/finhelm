@@ -29,7 +29,7 @@ class Config:
     embed_model: str = "BAAI/bge-small-en-v1.5"
     store: str = "faiss"  # faiss | pgvector
     # Prepend issuer/form/period/section to a chunk before embedding it. Off reproduces
-    # the an earlier stage indexes exactly; on requires an index built with it, which is why the
+    # the original indexes exactly; on requires an index built with it, which is why the
     # flag also selects the index directory (see stores.index_name).
     contextual_headers: bool = False
     # BGE/E5 are trained asymmetrically: passages are embedded bare, queries carry a
@@ -128,7 +128,7 @@ class Config:
         bge-base the project now ships, and never read by anything, so the disagreement sat
         there harmlessly. It stops being harmless the moment a store uses it: pgvector
         needs the width in DDL, and `vector(384)` against 768-dim embeddings rejects every
-        insert. The build guide's schema has the same 384 baked in.
+        insert.
 
         Unknown models raise instead of guessing. A wrong dimension produces either a hard
         failure at insert or, if the numbers happen to line up, silent nonsense at query

@@ -1,4 +1,4 @@
-"""One interface over three chunking strategies, so an earlier stage can ablate them.
+"""One interface over three chunking strategies, so the ablation can compare them.
 
     chunk(doc, cfg) -> list[Chunk]
 

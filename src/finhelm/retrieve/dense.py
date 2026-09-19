@@ -2,7 +2,7 @@
 
 Deliberately thin. All backend-specific behaviour lives behind the VectorStore protocol,
 so this function never learns whether it is talking to FAISS or pgvector — which is what
-makes the an earlier stage swap a config change rather than a rewrite.
+makes the FAISS-to-pgvector swap a config change rather than a rewrite.
 """
 
 from __future__ import annotations

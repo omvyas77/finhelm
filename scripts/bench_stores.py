@@ -55,7 +55,7 @@ def mirror_into_pg(faiss: FaissStore, table: str, dim: int, batch: int = 500):
     """Copy the FAISS index into Postgres verbatim.
 
     reconstruct_n gives back the stored vectors rather than re-encoding the corpus, which
-    matters twice: it takes seconds instead of 85 minutes, and it removes the possibility
+    matters twice: it takes seconds instead of 90 minutes, and it removes the possibility
     that a difference in results is a difference in embeddings.
     """
     from finhelm.stores.pgvector_store import PgVectorStore

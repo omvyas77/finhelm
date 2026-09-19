@@ -42,7 +42,7 @@ def get_model(name: str):
 #
 # A 38x collapse by 30k chunks, against flat allocated memory (133 MB) when flushed. The
 # filings sentence_window index is 190,858 chunks, so left alone this is the difference
-# between roughly eight minutes and the several hours the build guide budgets for it.
+# between roughly eight minutes and several hours.
 #
 # It is not a batch-size problem, which is the natural first guess: batches of 256 and 512
 # measured 21x and 44x slower than 128 only because those runs happened later in the same
@@ -85,8 +85,8 @@ def _encode_all(model, texts: list[str], batch_size: int, progress: bool) -> np.
 #
 # BGE v1.5 is trained with the query and the passage encoded differently: passages go in
 # bare, queries carry an instruction. Embedding both the same way — which is what this
-# module did through all of an earlier stage — leaves the query vector in a slightly different region
-# than the training distribution. Measured on the an earlier stage golden set it costs about 4 points
+# module did through the first ablation — leaves the query vector in a slightly different
+# region than the training distribution. Measured on the 75-question golden set it costs about 4 points
 # of recall@5, which is small but free to recover and simply wrong to leave in.
 #
 # Keyed by model prefix because the correct string is model-specific (E5 wants "query: ",

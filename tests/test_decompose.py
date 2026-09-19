@@ -13,8 +13,8 @@ Q = "How does JPMorgan's CET1 ratio compare with Citigroup's?"
 
 
 def test_unparseable_reply_returns_the_original_question(monkeypatch):
-    """A helper model answering in prose must cost ranking, never the answer. an earlier stage
-    answered 41% of questions correctly with no decomposition at all, so falling back to
+    """A helper model answering in prose must cost ranking, never the answer. Without
+    decomposition the pipeline answered 41% of questions correctly, so falling back to
     that is strictly better than raising."""
     monkeypatch.setattr(D, "claude", lambda *a, **k: "Sure! Here are some thoughts.")
     assert D.decompose(Q) == [Q]
