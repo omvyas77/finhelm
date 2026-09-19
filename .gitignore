@@ -38,3 +38,6 @@ evals/results/*.partial.jsonl
 mlflow.db
 mlruns/
 .env.bak.*
+
+.claude/
+*.bak.*
