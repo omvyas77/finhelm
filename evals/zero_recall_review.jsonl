@@ -1,0 +1,18 @@
+{"id": "q022", "verdict": "partial", "note": "Names both credit-risk categories and the link to economic trends, but omits the loss frequency versus severity distinction the question asks for."}
+{"id": "q023", "verdict": "correct_uncredited", "note": "$224 million and $1,797 million match the gold figures; drawn from GS 10-Qs that restate the December 2025 comparative, not the 10-K the label names."}
+{"id": "q026", "verdict": "correct_uncredited", "note": "States the staff conclusion that reserves were moving closer to ample, from an October 2025 passage the matcher does not credit."}
+{"id": "q027", "verdict": "declined_in_prose", "note": "Summarises the minutes, then declines the effective date and cap amounts with INSUFFICIENT_CONTEXT mid-answer. refused() only reads the prefix."}
+{"id": "q030", "verdict": "correct_uncredited", "note": "Target range and all three factors correct; the minutes repeat the statement's wording and the answer cites them instead of the statement."}
+{"id": "q035", "verdict": "partial", "note": "Grounded comparison of both filers' liquidity risks, but not built on the downgrade-collateral and subsidiary-restriction points the question targets."}
+{"id": "q039", "verdict": "partial", "note": "Answers AXP's side from regulatory and dividend-restriction passages rather than its capital-markets-access risk factor."}
+{"id": "q079", "verdict": "correct_uncredited", "note": "Answers from the same 10-Q, including the $2.7 billion decrease in criticized exposure; the matcher did not credit the chunk it used."}
+{"id": "q081", "verdict": "correct_uncredited", "note": "Names the GM card program transition and the narrowing of the consumer business, the two topics in the label."}
+{"id": "q103", "verdict": "correct_uncredited", "note": "Quotes the Section 368(a) opinion condition; the COF 10-K it retrieved states the same condition as the DFS 10-K the label names."}
+{"id": "q119", "verdict": "correct_uncredited", "note": "2.5% and 'lowest possible requirement' both correct, from a passage the matcher does not credit."}
+{"id": "q137", "verdict": "partial", "note": "'The 2023 complaint' is ambiguous across many 2023 debt-collection complaints; the answer summarises two others."}
+{"id": "q145", "verdict": "declined_in_prose", "note": "Describes a different Wells Fargo complaint, then declines with INSUFFICIENT_CONTEXT. refused() only reads the prefix."}
+{"id": "q170", "verdict": "partial", "note": "Grounded in real JPM and AXP risk factors, but frames the contrast around AI rather than the market-risk versus technology split in the label."}
+{"id": "q177", "verdict": "partial", "note": "Grounded, but emphasises third-party cyber risk rather than the technology and operations dependencies the label describes."}
+{"id": "q188", "verdict": "wrong", "note": "Presents the 2025 10-K's Q4 2024 figures (155% LCR, $123.8 billion reserves) as the 2024 10-K's, which reports 167% and $120.7 billion. Every figure appears in its cited source."}
+{"id": "q195", "verdict": "correct_uncredited", "note": "Traces the SCB period by period and reaches 3.1% effective October 1, 2024, from passages the matcher does not credit."}
+{"id": "q201", "verdict": "partial", "note": "Grounded in real DFS passages but reports the risk framework as largely stable, missing the change in emphasis the label describes."}

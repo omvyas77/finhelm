@@ -1,9 +1,10 @@
 """Draft golden-set questions from sampled corpus chunks.
 
-Provenance: LLM-drafted, human-verified, with hand-written negatives. This script does the
-drafting half only. `evals/golden_set.jsonl` is not valid until a human has read every row
-and the negatives have been written by hand — LLMs are bad at inventing plausible-but-absent
-facts, which is exactly what the 21 negatives need to be.
+Intended provenance: LLM-drafted, human-verified, with hand-written negatives. This script
+does the drafting half only, and the instruction it ends with, to read every row by hand,
+still stands: no row in the committed golden set records a human review (see its
+`provenance` field), and the negatives have to be written by hand, because LLMs are bad at
+inventing plausible-but-absent facts, which is exactly what the 21 negatives need to be.
 
 Two properties of the output are enforced here rather than left to review:
 

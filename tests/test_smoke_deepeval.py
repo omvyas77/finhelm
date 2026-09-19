@@ -226,7 +226,7 @@ def test_answer_is_grounded(question, answers):
 
 # Measured floor, not an aspiration: with the current retriever roughly half the positive
 # slice abstains. The gate's job is to catch a change that makes this worse, so the budget
-# sits just above where the baseline sits. Tightening it is the point of an earlier stage.
+# sits just above where the baseline sits. Improving recall is what should tighten it.
 MAX_ABSTENTIONS = 6
 
 
@@ -244,38 +244,10 @@ def test_abstention_within_budget(answers):
     )
 
 
-# Known-failing, tracked in notes/failures.md: q055 asks for Jamie Dimon's compensation
-# and the system fabricates an itemised breakdown citing an 8-K cover page. Marked xfail
-# rather than deleted or loosened, and strict=True so that fixing the generator turns this
-# into a loud XPASS telling you to remove the marker. A red-on-every-PR gate gets ignored
-# within a week; a tracked known failure does not.
-KNOWN_HALLUCINATION = {"q055"}
-
-# ...but only against the real corpus, and that distinction is load-bearing.
-#
-# The hallucination is corpus-dependent. q055 is an `unanswerable` question with no gold
-# spans, and the fabrication is built out of a plausible-but-irrelevant passage the
-# retriever surfaces from the full 24,650-chunk index. The CI fixture holds 1,903 chunks
-# and does not contain that passage, so on the fixture the system abstains correctly and
-# the strict xfail reports XPASS — which reads as "the bug is fixed, remove the marker".
-#
-# It is not fixed. The an earlier stage final run against the real corpus still answers q055 with
-# "$43,000,000 total compensation for fiscal year 2025" and does not abstain. Deleting the
-# marker on the strength of a fixture run would retire the project's only tracked instance
-# of the exact failure this system exists to prevent.
-#
-# So the expectation applies where it can be evaluated. On the fixture the question still
-# runs and still has to pass; it is simply not *expected* to fail.
-RUNNING_ON_FIXTURE = bool(os.getenv("FINHELM_DATA_DIR"))
-
-
 @pytest.mark.slow
 @pytest.mark.parametrize(
     "question",
-    [pytest.param(q, marks=pytest.mark.xfail(
-        strict=True, reason="known hallucination — see notes/failures.md"))
-     if (q["id"] in KNOWN_HALLUCINATION and not RUNNING_ON_FIXTURE) else q
-     for q in NEGATIVES],
+    NEGATIVES,
     ids=lambda q: q["id"],
 )
 def test_refuses_when_answer_is_absent(question, answers):

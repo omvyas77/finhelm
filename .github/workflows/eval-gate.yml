@@ -38,7 +38,7 @@ env:
   #
   # faiss-cpu and torch each ship an OpenMP runtime. On macOS both live in one process and
   # collide, and dense retrieval segfaults; OMP_NUM_THREADS=1 is the fix there. Linux
-  # wheels do not carry that conflict (verified an earlier stage), so importing the macOS workaround
+  # wheels do not carry that conflict, so importing the macOS workaround
   # into CI bought nothing and cost half the machine: the cross-encoder ran on one of two
   # vCPUs at 49 s/question, and the 40-question gate projected to 33 minutes.
   #
@@ -161,13 +161,13 @@ jobs:
 
       # --deterministic-only is retrieve-only *and* no LLM router: no API key, no network,
       # no cost. Gating on recall@16 because 16 is what the service actually hands the
-      # generator; the build guide's recall_at_5 is not a key this run produces, and
+      # generator; recall_at_5, the obvious choice, is not a key this run produces, and
       # --fail-under treats an unknown metric as a failure rather than a pass precisely so
       # that gate cannot sit green forever.
       #
       # The floor is calibrated against the fixture corpus and means nothing against the
       # real one — ~1,900 chunks is a far easier retrieval problem than 24,650, so this
-      # number reads higher than the headline 0.7403. It is a tripwire for "the diff moved
+      # number reads higher than the headline 0.7377. It is a tripwire for "the diff moved
       # retrieval", not a quality measure.
       # No --agentic: --deterministic-only forces it off, because agent.decompose calls
       # the model and swallows every exception, so a keyless run would not fail — it would
@@ -182,14 +182,14 @@ jobs:
             --deterministic-only --fresh --tag ci \
             --fail-on-fallback --allow-fallback complaints \
             --fail-under recall_at_16=0.80
-        # 0.80 against 0.8667, measured on this exact fixture with this exact command.
-        # Two questions of headroom: the run is deterministic, so identical code gives an
-        # identical number and the only movement is real — but a single question flipping
-        # is worth ~1/30, and a floor that trips on one is a floor nobody will keep.
+        # 0.80 against 0.8500, measured on this exact fixture with this exact command.
+        # The run is deterministic, so identical code gives an identical number and the
+        # only movement is real. A single question flipping is worth ~1/30, so one miss
+        # still passes and two fail; a floor that trips on one is a floor nobody will keep.
         #
         # This is NOT the headline number and must not be quoted as one. Retrieval against
-        # 1,903 chunks is a far easier problem than against 24,650; the full corpus scores
-        # 0.7403. It is a tripwire for "the diff moved retrieval", nothing more.
+        # 1,889 chunks is a far easier problem than against 24,650; the full corpus scores
+        # 0.7377. It is a tripwire for "the diff moved retrieval", nothing more.
 
       # if: always() — a failing gate is exactly when the per-question detail is worth
       # having, and a run that only uploads its artifacts on success is useless twice.
@@ -215,24 +215,20 @@ jobs:
     # to score, and 12 x 16 = 192 (~16 min) under the config the service actually serves.
     # Faithfulness claims push the measured total to ~32 minutes.
     #
-    # So correcting the gate to score the shipped config doubled its cost, and the "~6
-    # minute" figure in the build guide describes a configuration nobody runs. The first
+    # So correcting the gate to score the shipped config doubled its cost, and the original
+    # "~6 minute" estimate described a configuration nobody runs. The first
     # run after the fix was cancelled by a 30-minute limit.
     #
     # The lever is the 12 RPM, not the 16 contexts. The floor is questions x k x 5s, and
     # k is the term that must not move: judging faithfulness against only the passages the
     # answer cited measures self-consistency, not groundedness. A system that fabricates a
     # claim and cites a plausible-looking passage would pass cleanly, because the only
-    # evidence examined is the evidence the answer selected. This repo has that exact
-    # failure on file — q055 fabricates Jamie Dimon's compensation and cites a real 8-K
-    # cover page, and scores citation_validity 1.0 today. Cited-only faithfulness would
-    # likely score it well too: the cited page does not contradict the claim because it
-    # does not address it. That would retire the one gate able to catch the failure this
-    # system exists to prevent.
+    # evidence examined is the evidence the answer selected. That would retire the one
+    # gate able to catch the failure this system exists to prevent.
     #
     # Attack the rate instead, in this order:
-    #   1. A paid Gemini tier. At 60 RPM the same suite is ~6 minutes — the build guide's
-    #      own number — and the arithmetic collapses with nothing given up.
+    #   1. A paid Gemini tier. At 60 RPM the same suite is ~6 minutes, and the arithmetic
+    #      collapses with nothing given up.
     #   2. A different judge model for the gate. This is a PR check, not a published
     #      metric; it needs to be consistent and fast, not identical to the judge used for
     #      a final evaluation.

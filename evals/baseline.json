@@ -3,13 +3,13 @@
   "timestamp": "2026-09-01T23:46:31",
   "n_questions": 202.0,
   "retrieve_only": false,
-  "recall_at_16": 0.7403314917127072,
-  "recall_at_16_micro": 0.7016129032258065,
-  "recall_at_16_single_span": 0.8245614035087719,
+  "recall_at_16": 0.7377049180327869,
+  "recall_at_16_micro": 0.7,
+  "recall_at_16_single_span": 0.8189655172413793,
   "recall_at_16_multi_span": 0.5970149253731343,
-  "mrr": 0.4633178899062877,
+  "mrr": 0.46371878728436106,
   "citation_validity": 1.0,
-  "abstention_recall": 0.9047619047619048,
+  "abstention_recall": 0.9473684210526315,
   "route_accuracy": 0.9484536082474226,
-  "over_refusal_rate": 0.11602209944751381
+  "over_refusal_rate": 0.12021857923497267
 }

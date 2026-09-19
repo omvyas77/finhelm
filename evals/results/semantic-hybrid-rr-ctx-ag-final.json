@@ -30,26 +30,26 @@
     "temperature": 0.0
   },
   "summary": {
-    "recall_at_16_ci_low": 0.6823204419889503,
-    "recall_at_16_ci_high": 0.7928176795580111,
-    "n_gold_spans": 248.0,
-    "recall_at_16_micro": 0.7016129032258065,
-    "recall_at_16_micro_ci_low": 0.6419431119111805,
-    "recall_at_16_micro_ci_high": 0.7551318749059301,
-    "recall_at_16": 0.7403314917127072,
-    "mrr": 0.4633178899062877,
+    "recall_at_16_ci_low": 0.6830601092896175,
+    "recall_at_16_ci_high": 0.7923497267759563,
+    "n_gold_spans": 250.0,
+    "recall_at_16_micro": 0.7,
+    "recall_at_16_micro_ci_low": 0.6405173251395347,
+    "recall_at_16_micro_ci_high": 0.7534291359606159,
+    "recall_at_16": 0.7377049180327869,
+    "mrr": 0.46371878728436106,
     "citation_validity": 1.0,
     "citation_density": 1.0419596618046898,
     "uncited_claims": 1.8762376237623761,
     "route_accuracy": 0.9484536082474226,
-    "recall_at_16_single_span": 0.8245614035087719,
-    "n_single_span": 114.0,
+    "recall_at_16_single_span": 0.8189655172413793,
+    "n_single_span": 116.0,
     "recall_at_16_multi_span": 0.5970149253731343,
     "n_multi_span": 67.0,
-    "abstention_recall": 0.9047619047619048,
-    "over_refusal_rate": 0.11602209944751381,
-    "n_negative": 21.0,
-    "n_positive": 181.0,
+    "abstention_recall": 0.9473684210526315,
+    "over_refusal_rate": 0.12021857923497267,
+    "n_negative": 19.0,
+    "n_positive": 183.0,
     "p50_latency_ms": 32280.5,
     "p95_latency_ms": 56871.85,
     "p50_retrieval_ms": 23552.5,
@@ -9698,9 +9698,14 @@
       "cost_usd": 0.025368,
       "id": "q055",
       "question": "What was Jamie Dimon's total compensation for fiscal year 2025?",
-      "type": "unanswerable",
-      "ground_truth": "Not answerable from this corpus. Executive compensation is disclosed in the DEF 14A proxy statement, which was not ingested; the corpus contains only 10-K, 10-Q and 8-K filings.",
-      "gold_spans": [],
+      "type": "single_hop",
+      "ground_truth": "$43,000,000 for 2025, per JPMorgan's Item 5.02(e) 8-K filed 2026-01-22: an annual base salary of $1,500,000 and performance-based variable incentive compensation of $41,500,000, of which $5,000,000 is paid in cash and $36,500,000 in Performance Share Units.",
+      "gold_spans": [
+        {
+          "doc_id": "JPM_8K_2026-01-22_000052",
+          "snippet": "JPMorgan Chase & Co. (the \u201cFirm\u201d) announced that the independent members of the Board of Directors (the \u201cBoard\u201d) approved the annual compensation for 2025 for Mr. James Dimon, CEO, in the amount of $43,000,000 compared to last year\u2019s annual compensation of $39,000,000."
+        }
+      ],
       "expected_source": [
         "filings"
       ]
@@ -11035,9 +11040,14 @@
       "cost_usd": 0.023886,
       "id": "q063",
       "question": "How did each FOMC participant vote on the balance sheet runoff cap change, by name?",
-      "type": "unanswerable",
-      "ground_truth": "Not answerable. Minutes attribute votes by name only for the policy directive and recorded dissents; participant-level views on other matters are summarized in aggregate terms.",
-      "gold_spans": [],
+      "type": "single_hop",
+      "ground_truth": "The March 19, 2025 statement, which slowed runoff by cutting the monthly Treasury redemption cap from $25 billion to $5 billion from April, records the vote: Powell, Williams, Barr, Bowman, Collins, Cook, Goolsbee, Jefferson, Kugler, Musalem and Schmid voted for; Christopher Waller voted against, preferring to continue the existing pace of decline in securities holdings. Non-voting participants do not cast votes.",
+      "gold_spans": [
+        {
+          "doc_id": "FOMC_2025-03-19_statement",
+          "snippet": "Voting for the monetary policy action were Jerome H. Powell, Chair; John C. Williams, Vice Chair; Michael S. Barr; Michelle W. Bowman; Susan M. Collins; Lisa D. Cook; Austan D. Goolsbee; Philip N. Jefferson; Adriana D. Kugler; Alberto G. Musalem; and Jeffrey R. Schmid. Voting against this action was Christopher J. Waller, who supported no change for the federal funds target range but preferred to continue the current pace of decline in securities holdings."
+        }
+      ],
       "expected_source": [
         "filings"
       ]
@@ -35314,6 +35324,24 @@
       "expected_source": [
         "filings"
       ]
+    }
+  ],
+  "rescored": [
+    {
+      "date": "2026-09-19",
+      "reason": "q055 relabelled: JPM 8-K 2026-01-22 discloses the figure; original label assumed DEF 14A only",
+      "relabelled": [
+        "q055"
+      ],
+      "records_regenerated": false
+    },
+    {
+      "date": "2026-09-19",
+      "reason": "q063 relabelled: the March 2025 FOMC statement records each vote on the runoff change by name",
+      "relabelled": [
+        "q063"
+      ],
+      "records_regenerated": false
     }
   ]
 }

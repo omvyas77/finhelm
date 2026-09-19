@@ -2,8 +2,8 @@
 
 Four endpoints, and one of them is unusual on purpose: `/eval-report` serves the most
 recent evaluation result, so the running service exposes its own measured quality rather
-than asking anyone to trust a number in a README. A system that reports recall@16 of 0.7403
-and an over-refusal rate of 0.1160 to whoever asks is making a checkable claim.
+than asking anyone to trust a number in a README. A system that reports recall@16 of 0.7377
+and an over-refusal rate of 0.1202 to whoever asks is making a checkable claim.
 
 `/config` exists for the same reason. Every retrieval knob that has been argued about in
 this project — chunk size, pool width, the RRF constant, whether windowing is on — is a

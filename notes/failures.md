@@ -1,7 +1,9 @@
 # Failure log
 
-Every wrong answer, with the *mechanism* — not just "it was wrong."
-This file became the golden set, the failure taxonomy, and the write-up.
+A working log kept while building finhelm: each failure, what caused it, and what changed
+because of it. It is for anyone who wants the reasoning behind a number in the README. It
+runs in the order things happened, and entries later found to be wrong are corrected in
+place rather than deleted.
 
 Format:
 
@@ -87,8 +89,7 @@ redundant.
 
 ## Ingestion findings: FOMC statements
 
-**`format=json` returns 404.** It appears in the build guide's snippet. The endpoint
-already returns JSON; passing the parameter routes to a nonexistent export path. Found by
+**`format=json` returns 404.** The endpoint already returns JSON; passing the parameter routes to a nonexistent export path. Found by
 bisecting parameters one at a time against a known-good bare request.
 
 **Offset pagination is silently ignored.** `frm`, `from`, and `offset` all return the
@@ -111,9 +112,9 @@ so records cluster toward quarter-end. Acceptable for retrieval; the analytics m
 note should mention it.
 
 **`consumer_disputed` does not exist for this date range** (0/200 records). CFPB
-discontinued the field in 2017. The build guide lists consumer-dispute rate as one of
-three of the analytics metrics — that metric is not computable and the module should ship with
-relief rate and timely-response rate only.
+discontinued the field in 2017. A disparity screen would want consumer-dispute rate as one
+of its three metrics; it is not computable, and the module should ship with relief rate and
+timely-response rate only.
 
 **26% of ZIP codes are masked** (`010XX` style). Enough full ZIPs remain for the
 ZCTA-level demographic join, but the effective sample for the geographic layer is ~74%.
@@ -265,39 +266,76 @@ to exclude headings and non-assertive sentences before it is treated as a gate.
 
 ## Building the evaluation harness
 
-### Hallucinated executive compensation with a valid citation (q055)
+### q055 was a golden-set label error, not a hallucination
 
-The single most useful result of the harness, produced by the PR gate on its first real run.
+This entry was first written as "Hallucinated executive compensation with a valid
+citation", and for weeks it was treated as the most useful result of the harness. It was a
+mistake in the golden set. The original claim, the correction, and how it was found are
+all kept here.
 
-Asked *"What was Jamie Dimon's total compensation for fiscal year 2025?"* — an
-`unanswerable` negative, because compensation lives in the DEF 14A proxy and the corpus
-holds 10-K/10-Q/8-K only — the system did not abstain. It answered:
+**What was claimed.** q055 asks *"What was Jamie Dimon's total compensation for fiscal year
+2025?"* It was written by hand as an `unanswerable` negative, on the reasoning that
+compensation is disclosed in the DEF 14A proxy and the corpus holds 10-K, 10-Q and 8-K only.
+The system did not abstain. It answered $43,000,000, itemised as a $1,500,000 base salary
+and $41,500,000 of variable pay, $5,000,000 in cash and $36,500,000 in PSUs, and cited
+`[S2]`, a chunk of JPMorgan's 8-K of 2026-01-22. The entry said that chunk was cover-page
+boilerplate containing no compensation figures, that the numbers came from the model's
+parametric knowledge, and that a `citation_validity` of 1.0 on a fabricated figure was the
+argument for judged faithfulness. q055 became a strict xfail in the PR gate, a test
+asserting the "hallucination" was still present in the final run, and the lead example in
+the README and the write-up.
 
-> Jamie Dimon's total compensation for fiscal year 2025 was **$43,000,000**, compared to
-> $39,000,000 the prior year [S2]. Base salary: $1,500,000 [S2]. Performance-based
-> variable incentive: $41,500,000, of which $5,000,000 cash and $36,500,000 in PSUs [S2].
+**What is true.** JPMorgan reports the CEO's annual compensation in an Item 5.02(e) 8-K
+every January, and `JPM_8K_2026-01-22_000052` is in the corpus. That first gate run scored
+the `Config()` default (fixed chunks, dense only, the same retrieval as the `fixed-dense`
+run), where `[S2]` is a chunk that *begins* with the cover-page checkbox ("Emerging growth
+company ☐ ..."). The Item 5.02(e) paragraph holding every figure in the answer starts 638
+characters later. In the frozen final run the same paragraph is `[S1]`, at reranker score
+0.9965. The answer was correct, grounded and correctly cited. On the CI fixture, which
+lacks that chunk, the system abstained, which was also correct.
 
-`[S2]` is the cover page of a JPM 8-K — the "emerging growth company" checkbox
-boilerplate. It contains no compensation figures at all. Every line of that itemised
-breakdown came from the model's parametric knowledge of Dimon's actual pay, not from the
-retrieved text, in direct violation of prompt rule 3 ("Do not guess, and do not answer
-from general knowledge").
+**How it was found.** By reading the cited chunk to the end. The original judgement was
+made from its first two lines. Every full-corpus run in `evals/results/` that retrieved for
+q055 has the figure in its top two passages, and every one that generated an answer cites
+it.
 
-**Why this matters more than a typical hallucination:** it scores
-`citation_validity = 1.0`. The metric checks that `[S2]` refers to a source that was
-supplied, which it does. Nothing in the deterministic metric suite catches this. A
-dashboard built on citation validity alone would show a perfect score on a fabricated
-executive compensation figure — the highest-stakes category of number in the corpus.
+**A second one.** Searching the full chunk parquet for every hand-written negative, rather
+than the 16 passages retrieved for each, found q063: *"How did each FOMC participant vote on
+the balance sheet runoff cap change, by name?"* It was labelled unanswerable on the
+assumption that named votes cover only the rate decision. The March 19, 2025 statement
+slowed runoff (Treasury cap $25 billion to $5 billion from April) as part of the policy
+action, lists every vote by name, and records Waller's dissent, which was specifically about
+the pace of runoff. The system abstained on q063 for the same reason the label gave: "voting
+records by name in the provided sources relate only to federal funds rate decisions". The
+question does not say which runoff change it means; the gold span is the March 2025
+statement. The other 19 negatives were checked the same way and hold.
 
-This is the concrete argument for judged faithfulness alongside citation counting, and it
-is why the negatives in the golden set assert abstention directly rather than being
-scored by an LLM: whether the system emitted `INSUFFICIENT_CONTEXT` is a fact, not an
-opinion.
+**What changed.** Both are relabelled `single_hop`, with gold spans copied byte-for-byte
+from the chunk text and a `rationale` recording the original mistake. `scripts/rescore.py`
+re-scored the frozen run from its existing outputs, with no API calls:
 
-Tracked as a strict xfail in `tests/test_smoke_deepeval.py`. Candidate fixes,
-in order of preference: require the model to quote the span supporting any figure before
-emitting it; add a document-type precondition (compensation questions require a DEF 14A
-in the context); raise `top_k_retrieve` so the abstention decision sees more evidence.
+    abstention recall   0.9048 (19/21)   ->  0.9474 (18/19)
+    over-refusal rate   0.1160 (21/181)  ->  0.1202 (22/183)
+    recall@16, macro    0.7403           ->  0.7377
+    recall@16, micro    0.7016           ->  0.7000
+
+Over-refusal rose because the system declined q063, which is now answerable. The xfail and
+the "hallucination still present" test are gone; `tests/test_container_config.py` now
+asserts the opposite, that q055 is answered from the 8-K and the cited passage contains the
+figure. The CI fixture was regenerated, since its smoke set picks negatives by type.
+
+**The lesson.** A negative is a claim that the corpus does not contain a fact, and it has
+to be checked against the corpus, not against an assumption about which filing type
+carries the fact. "Compensation is in the proxy" was true and beside the point. Two of 21
+hand-written negatives failed that check, and one of them had been the flagship failure. On
+q063 the model made exactly the assumption the label author made, which is a reminder that
+the label author's reasoning is not an independent check on the model's.
+
+A smaller one: a chunk is not its first line. Cover-page boilerplate at the top of an 8-K
+chunk says nothing about what follows it.
+
+The genuine failures that replace it as examples, q188 and q070, are in
+"Reading the answered misses" at the end of this file.
 
 ### Quota exhaustion masquerading as timeouts, then as NaN
 
@@ -473,8 +511,8 @@ nobody remembers the reason for.
 
 ### MPS embedding throughput collapses 38x over a long encode
 
-The `filings_sentence_window` index (190,858 chunks) was budgeted at ~3.5 hours by the
-build guide and deferred for days on that basis. It actually takes **12m39s**. The gap was
+The `filings_sentence_window` index (190,858 chunks) was estimated at ~3.5 hours and
+deferred for days on that basis. It actually takes **12m39s**. The gap was
 one line of missing cache management.
 
 Measured on this corpus at a fixed `batch_size=128`, in 5,000-chunk windows:
@@ -549,10 +587,10 @@ expansion — the last because `_contradicts()` is a genuinely non-monotonic pat
 drags in neighbouring figures the lone sentence did not have), so "expansion cannot lose a
 hit" is an assumption that deserves a test rather than an argument.
 
-### Failure taxonomy (2.9) — `semantic-hybrid-rr`, 54 answerable + 21 negative
+### Failure taxonomy — `semantic-hybrid-rr`, 54 answerable + 21 negative
 
 Produced by `scripts/failure_taxonomy.py`, which is a script and not a tally in this file
-because the serving work exists to move these numbers. Each failure is charged to its *earliest*
+because the next round of work exists to move these numbers. Each failure is charged to its *earliest*
 cause — routing, then retrieval, then the abstention decision, then synthesis — because
 the categories overlap and independent counts produce a table that sums past 100% and
 cannot be used to prioritise.
@@ -565,8 +603,11 @@ cannot be used to prioritise.
 
     hallucinated on a negative         2  (10% of 21)   q055, q075
 
+(q055 was later found to be a label error, not a hallucination: the system's answer was
+correct and cited. See the q055 entry above.)
+
 **Retrieval is the whole problem: 29 of 54, 54%.** Everything else is a rounding error
-next to it. The The serving work should spend its budget on recall — query expansion, better fusion, more
+next to it. The next round of work should spend its budget on recall — query expansion, better fusion, more
 candidates before rerank — and not on the generator or the abstention threshold.
 
 Three things this separation makes visible that the aggregate metrics hide:
@@ -604,7 +645,7 @@ of 0.955 and was believed for several minutes anyway.
 
 ### Every MLflow run in the project was logged to macOS AirPlay
 
-Spec 2.5 is the one that "turns *I tried some things* into *I ran a controlled
+Experiment tracking is what "turns *I tried some things* into *I ran a controlled
 experiment*". Throughout the ablation it recorded nothing.
 
 `MLFLOW_TRACKING_URI` was `http://localhost:5000` with no MLflow server behind it. On
@@ -655,7 +696,7 @@ Two smaller things fell out of the same investigation:
 
 ## Three predicted wins that the data refused to confirm
 
-The the post-mortem produced a plan with a ranked set of fixes. Measuring them changed
+The post-mortem produced a plan with a ranked set of fixes. Measuring them changed
 the ranking, and in two cases inverted it. Recording the predictions next to the outcomes,
 because the pattern — plausible mechanism, measurable, and wrong — is the point.
 
@@ -734,14 +775,16 @@ independent intervals.
 ### What actually needs to happen next
 
 Not more tuning. The set has to get bigger before any tuning result can be read. 127 new
-questions (174 gold spans) are drafted and mechanically verified in
-`evals/golden_expansion_unreviewed.jsonl` — deliberately NOT merged into
-`golden_set.jsonl`, because `scripts/verify_golden.py` checks findability, triviality and
-duplication, and none of those is a human deciding whether a question is well-posed.
+questions (174 gold spans) are drafted and mechanically verified in a staging file, not yet
+merged into `golden_set.jsonl`, because `scripts/verify_golden.py` checks findability,
+triviality and duplication, and none of those is a human deciding whether a question is
+well-posed. (They were merged later, as q076-q202, with provenance
+`llm_drafted_machine_verified`; no row records a human review. The staging file is
+deleted.)
 
-### Temporal questions: the plan's fix was the wrong fix
+### Temporal questions: date filtering was the wrong fix
 
-The plan proposed metadata date-filtering for the 8 temporal questions (6 of which fail).
+The first idea was metadata date-filtering for the 8 temporal questions (6 of which fail).
 Reading them first: **every one spans two documents from different periods** — two gold
 docs, years apart, in all 8. A date filter would guarantee missing half of every one of
 them. They are structurally multi-hop, so decomposition is the right mechanism and the
@@ -751,7 +794,7 @@ filter idea was dropped before being built.
 
 Four separate ways a job "started and nothing happened", all in one session:
 
-  * `nohup ... &` detaches, so the harness reports the *launcher* finished while the real
+  * `nohup ... &` detaches, so the shell reports the *launcher* finished while the real
     process runs on invisibly. One such orphan ran 30 minutes and poisoned every GPU
     timing taken beside it.
   * Piping a build through `grep` block-buffers its output to a file, so a job that is
@@ -761,7 +804,7 @@ Four separate ways a job "started and nothing happened", all in one session:
   * FAISS and a second CrossEncoder in one process aborts in native code with no traceback
     and a leaked-semaphore warning. The real pipeline never does this; benchmark scripts do.
 
-What works: `python -u` writing straight to a log, harness-tracked, no pipes, and progress
+What works: `python -u` writing straight to a log file, no pipes, and progress
 verified by log growth rather than by `%cpu` — which understates MPS work badly enough to
 read as stalled.
 
@@ -820,7 +863,7 @@ with 95% confidence and 80% power:
 
 There are 20. Nothing measured this session — query prefix, contextual headers, pool width,
 decomposition — produced an effect larger than 0.05, and none of them could have been
-resolved if it had. The the ablation ranked 18 cells on gaps smaller than this.
+resolved if it had. The first ablation ranked 18 cells on gaps smaller than this.
 
 The actionable form: ~45 multi-span questions makes effects of 0.15+ resolvable, which is
 a realistic authoring target. Chasing 0.05 effects needs 385 and is not worth it. So the
@@ -917,7 +960,7 @@ Three attempts did not finish:
     over 10 minutes of wall clock.
   * MPS, batch 64 — same, 23 seconds of CPU over 8 minutes.
   * CPU, batch 32 — genuinely progressing (state R, CPU time accruing at ~1:1) but the
-    measured rate is 7.2 s per 32-chunk batch over 771 batches, i.e. ~85 minutes.
+    measured rate is 7.2 s per 32-chunk batch over 771 batches, i.e. ~92 minutes.
 
 The MPS degradation is environment state, not a code fault: the contextual-header index
 built normally on MPS earlier in the same session, and the machine only started wedging
@@ -1031,7 +1074,8 @@ declining to answer from evidence it never retrieved. That is the right behaviou
 should not be tuned away — the abstention threshold is not the problem, recall is.
 
 Two negatives still get confident fabricated answers, q055 and q075 — the same two as
-the harness, and q055 remains the deliberate strict xfail in the PR gate.
+the harness, and q055 remains the deliberate strict xfail in the PR gate. (Later: q055's
+answer was correct and its label wrong; see the q055 entry. The xfail is gone.)
 
 ### Contextual headers: rejected at n=74, resolved at n=248
 
@@ -1315,7 +1359,7 @@ those can help a scorer that ranks the wrong thing highest.
 
 `bge-reranker-base` is the one component of this pipeline that has never been changed,
 while the embedder, the chunk text, the fusion, the query shape and the filter all have.
-It is also worth +0.157 — the single most valuable component measured on the evaluation harness — which
+It is also worth +0.157 — the single most valuable component measured on the 75-question set — which
 made it look settled rather than unexamined.
 
 ## A bigger reranker does not help either — so it is not capacity
@@ -1345,7 +1389,7 @@ period, the answer-bearing passage is not in the top few.** Every intervention t
 worked on which candidates are present or how they are ordered relative to each other.
 None of them changes what a candidate *is*.
 
-`chunk_tokens` has never been swept. The the ablation varied chunking *strategy* —
+`chunk_tokens` has never been swept. The first ablation varied chunking *strategy* —
 fixed, semantic, sentence_window — at a fixed 800 tokens throughout, and 42% of all misses
 are "right document, wrong passage", which is the signature of chunks too coarse to
 separate one disclosure from the next. It is the only untested lever that changes the unit
@@ -1923,7 +1967,7 @@ configured to talk to a database and quietly talked to itself.
 `FINHELM_API_URL` — the toggle was inert. It rendered, it flipped, it changed no
 behaviour. The in-process path honoured it, which is exactly why nobody noticed.
 
-**`embed_dim` again, at the call site this time.** the serving work.4 turned `Config.embed_dim` into
+**`embed_dim` again, at the call site this time.** The pgvector work turned `Config.embed_dim` into
 a derived property because a hardcoded 384 sat next to a 768-dim model for two weeks. The
 same disagreement was waiting one layer up: `load_store` constructed `PgVectorStore`
 without a dimension, taking the constructor's 768 default whatever model was requested.
@@ -1988,14 +2032,14 @@ installed, and — in the runtime stage, as the non-root user with the Hub fence
 the full application import graph does not come up. Wrong fix 2 was caught by the first of
 those within seconds of introducing it, which is the entire argument for writing them.
 
-**This has a consequence for the CI gate (3.6).** The spec's workflow runs a bare
+**This has a consequence for the CI gate.** A stock workflow runs a bare
 `pip install -r requirements.txt` on `ubuntu-latest`, which is amd64 — so CI would pull
 the CUDA torch on every push: gigabytes of download against a runner disk quota, to run
 tests that never touch a GPU. The CI step needs the same CPU-index treatment as the image.
 
-### 3.4 finished: what the pgvector comparison actually showed
+### What the pgvector comparison actually showed
 
-The benchmark 3.4 was blocked on now runs (`scripts/bench_stores.py`), against the real
+The pgvector benchmark that was blocked now runs (`scripts/bench_stores.py`), against the real
 index mirrored into Postgres with `reconstruct_n` so both backends answer from
 bit-identical vectors. 24,650 rows load in 46.6 s.
 
@@ -2033,7 +2077,7 @@ approximate and owes the flat index a close ordering, not an identical one.
 
 ## The CI gate, and three ways it went wrong
 
-### The CI gate cannot use the real corpus, and the spec's version gates nothing
+### The CI gate cannot use the real corpus, and the obvious version gates nothing
 
 `--fail-under recall_at_5=0.75` names a metric this system does not produce. It serves
 top-k=16 and `summarize` writes `recall_at_16`; `recall_at_5` is simply absent from the
@@ -2223,8 +2267,8 @@ because the quota is per project per model. So the floor is questions x k:
 | bare `Config()` (what it used to score) | 8 | 96 | ~8 min |
 | `api.CONFIG` (what ships) | 16 | 192 | ~16 min |
 
-Faithfulness claims push the measured total to **31m36s**. The build guide budgets "~6
-min · a few cents" for this tier, and that number describes the k=8 config.
+Faithfulness claims push the measured total to **31m36s**. The original estimate of "~6
+min · a few cents" for this tier describes the k=8 config.
 
 Two separate timeouts then fired, and both produced misleading failures:
 
@@ -2258,9 +2302,15 @@ claim because it does not address it. The one gate capable of catching that clas
 failure would stop being able to, in a system whose entire value proposition is that it
 does not fabricate.
 
+Correction, later: the counterexample was wrong. q055 does not fabricate; the cited 8-K
+chunk contains every figure in the answer, below the cover-page text that opens it (see
+the q055 entry). The design argument, that the judge should see everything the system was
+given rather than only what it chose to cite, does not depend on it, but this repo no
+longer holds a concrete instance of the failure it describes.
+
 **The rate limit is the lever, not the context count.** The floor is questions x k x 5s and
 k is the term that must not move. In order: a paid Gemini tier (60 RPM puts the suite at
-~6 minutes, the build guide's own figure, giving up nothing); a different judge model for
+~6 minutes, giving up nothing); a different judge model for
 the gate, since a PR check needs to be consistent and fast rather than identical to a
 final-evaluation judge; or fewer questions at full k, where 6 x 16 costs what 12 x 8 did
 and weakens coverage in a way that can be stated plainly. If none are available, sample
@@ -2305,8 +2355,8 @@ Three times now a stated conclusion has been overturned by going back to the art
 - **The PR gate's config** was a bare `Config()` for the life of the file, so every quality
   gate the project passed was gating a system it never ran.
 
-And now a fourth, of the same shape but about a *result* rather than a component: the agentic work.2's
-headline experiment was described as "already done" on the strength of the finding
+And now a fourth, of the same shape but about a *result* rather than a component: the decomposition
+work's headline experiment was described as "already done" on the strength of the finding
 that gating *when* `decompose` fires leaves recall bit-identical. That is a different
 question from what decomposition buys over not decomposing. Checking the history settled it
 in one query: 14 of 15 full-corpus runs are `agentic=True`, and the single `agentic=False`
@@ -2318,7 +2368,7 @@ its recorded config and its recorded metrics — and not recalled. Two adjacent 
 easy to conflate precisely because they are adjacent, and recollection does not preserve
 which one was measured.
 
-### What the 4.2 control actually controls for
+### What the agentic-off control actually controls for
 
 `cfg.agentic` gates exactly one call, `decompose`; routing keys off `cfg.llm_router` and is
 independent. But the delta is still not "what decomposition buys", because two other things
@@ -2478,19 +2528,19 @@ measured 180px tall and 0 wide, and a screenshot showed blank space where the pi
 should be. On that evidence the diagram was stripped of its `classDef` styling, cylinder
 and hexagon node shapes, dotted labelled edges, and per-subgraph `direction` overrides —
 the styling that made the evaluation loop visually prominent, which was the one thing the
-build guide asked the diagram to do.
+diagram was for.
 
 The evidence was worthless. Loading `github.com/mermaid-js/mermaid` — whose README
-diagrams unquestionably render — produced **the same 180px/0-width iframes**. That
-measurement is how this browser pane treats GitHub's cross-origin viewscreen iframe,
-regardless of what is inside it. It says nothing about any particular diagram.
+diagrams unquestionably render — produced **the same 180px/0-width iframes**. That is how
+GitHub's cross-origin viewscreen iframe measures from the outside, whatever is inside it.
+It says nothing about any particular diagram.
 
 Two checks had already said the diagram was fine, and both were correct: it parsed under
 mermaid 11 and under mermaid 10, which is the era GitHub ships. The failing signal was the
 only one without a control behind it, and it was the one I acted on.
 
-**This is the standing rule about substitutes, in a new costume.** A browser pane stood in
-for GitHub's renderer; it looked like the real thing, produced a plausible negative, and
+**This is the standing rule about substitutes, in a new costume.** An automated page
+measurement stood in for GitHub's renderer; it looked like the real thing, produced a plausible negative, and
 had never been checked against a case with a known answer. The fix is the same one the
 other four instances needed: *before trusting a proxy's verdict, run it against an input
 whose answer you already know.* One navigation to a repo with working diagrams would have
@@ -2502,13 +2552,18 @@ condemned something that worked. The project's earlier substitute failures produ
 like a control. A bad proxy is not biased toward optimism; it is just uninformative, and
 uninformative evidence is as capable of destroying good work as of protecting bad work.
 
+Looked at directly on GitHub later, the diagram renders. The page had a different
+problem: the HTML comment under the diagram quoted a mermaid error message containing a
+literal `-->`, which closed the comment early and printed the rest of it as page text. The
+comment is deleted.
+
 ### The XPASS that would have retired the hallucination guard
 
 The judged tier reported `[XPASS(strict)]` on q055 — the tracked Jamie Dimon fabrication —
-which is precisely the signal the marker was built to send: *fixed, remove me*. The the evaluation harness
-note even says so in those words.
+which is precisely the signal the marker was built to send: *fixed, remove me*. The
+original q055 note even says so in those words.
 
-It is not fixed. The the agentic work.4 final run against the real 24,650-chunk index still answers
+It is not fixed. The final run against the real 24,650-chunk index still answers
 q055 with "$43,000,000 total compensation for fiscal year 2025", itemised, without
 abstaining.
 
@@ -2532,3 +2587,79 @@ that encodes a known failure is a claim about a specific system on a specific co
 it somewhere else and it can pass for reasons that have nothing to do with the failure
 being fixed. An xfail is as much a validator as an assertion, and needs pinning to the
 thing it describes just as much.
+
+**Correction, later.** The premise of this section is wrong. q055 was never a
+hallucination: the passage the system cites on the full index contains every figure in the
+answer, and on the fixture, which lacks that passage, the system correctly declined. The
+XPASS was telling the truth, and the "plausible-but-irrelevant passage" above was never
+read past its first lines. The general point in the previous paragraph survives; its
+example does not. See the q055 entry near the top of this file.
+
+## Reading the answered misses
+
+With q055 and q063 relabelled, the frozen run has 31 answerable questions where no gold
+span reached the model. The system declined 13 and answered 18. "Answered with nothing
+behind it" was the phrase used for those 18, and q055 had just shown that the matcher,
+which needs the exact `doc_id` and a shared 10-word run, can miss valid evidence. So each
+of the 18 was read against its retrieved passages. The verdicts are in
+`evals/zero_recall_review.jsonl`, and a test fails if that file stops covering exactly the
+run's answered misses.
+
+    right, from a passage the matcher does not credit    8
+    a refusal, stated partway through the answer          2
+    grounded in real passages, answering a nearby question 7
+    wrong                                                  1
+
+No figure in any of the 18 answers is absent from the passages it was given.
+
+`correct_uncredited` is mostly the same fact in another filing: Goldman's downgrade
+collateral from 10-Qs that restate the December comparative (q023), the Discover merger's
+Section 368(a) condition from Capital One's 10-K (q103), the February 2023 target range
+from minutes that repeat the statement (q030). The metric is doing what it was designed to
+do, crediting only the named source, and these are the cost of that design.
+
+`declined_in_prose` (q027, q145) is the model writing `INSUFFICIENT_CONTEXT` partway through
+an answer. `refused()` only checks the prefix, so both count as answered. Left as is: the
+definition is used by every run in history, and changing it would move every abstention
+number. Worth knowing when reading the 13/18 split.
+
+`partial` (q022, q035, q039, q137, q170, q177, q201) is the real weakness. Every claim
+traces to a passage that was retrieved, but the passages sit next to the question — a
+neighbouring risk factor, a different 2023 complaint, AI risk where the label wants market
+risk — and the answer addresses what it had.
+
+### q188: the right filer, the wrong year, every citation valid
+
+`temporal_confusion`. *How did Capital One's liquidity risk management evolve between its
+2024 10-K (filed 2024-02-23) and its 2026 10-K (filed 2026-02-19)?* The 2024 10-K reports an
+average LCR of 167% for Q4 2023 and liquidity reserves of $120.7 billion. The answer's
+"2024 10-K" column holds 155% and $123.8 billion, which are the Q4 2024 figures from the
+2025 10-K (`[S10]`, `COF_10K_2025-02-20_000092`). Its conclusion, that the LCR "improved
+significantly (155% → 173%)", compares the wrong years.
+
+Every figure is real, and every citation points at the passage containing it. Citation
+validity is 1.0, and a claim-level faithfulness check would pass it too. The failure is the
+mapping from passage to filing period, which no metric here checks. Three COF 10-Ks were in
+the top 16 and the model merged two of them.
+
+### q070: out of scope, answered from adjacent material, with a date error on top
+
+`under_refusal` + `temporal_confusion`. *What interest rate decision did the European
+Central Bank make at its most recent meeting?* The corpus has FOMC material only, so the
+right response is to decline. Two mechanisms:
+
+1. **Answering an out-of-scope question from in-corpus commentary.** FOMC minutes summarise
+   foreign central banks' actions in the staff review, so retrieval returned passages that
+   mention the ECB, and the model answered from them.
+2. **A temporal reasoning error.** The newest retrieved minutes (`FOMC_2026-06-17_minutes`,
+   `[S12]`) report an ECB rate increase. The model called that source "future-dated" and
+   gave the December 2024 cut as the most recent decision. Its own sense of the current date
+   overrode the dates on the documents.
+
+Wrong under either reading: out of scope means decline, and if the minutes count as a
+source the answer is the June 2026 increase. It is the only one of 19 negatives the system
+answered.
+
+q188, q070 and the seven partials share one shape: something close to the question was
+retrieved and answered as if it were the question. That, not fabrication, is the failure
+mode this system actually has.

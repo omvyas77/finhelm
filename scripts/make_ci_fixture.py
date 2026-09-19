@@ -1,17 +1,17 @@
 """Carve a small, committable corpus out of the real one so CI can run a real eval.
 
 The problem this solves: a retrieval gate needs an index, the index is 961 MB of
-gitignored build artifact, and building it from the raw corpus takes 85 minutes on CPU.
+gitignored build artifact, and building it from the raw corpus takes about 90 minutes on CPU.
 Without something like this, the CI "eval gate" can only re-read numbers somebody else
 recorded — which gates nothing about the code in the pull request.
 
-So CI gets a corpus small enough to commit and to index in about a minute: every chunk
+So CI gets a corpus small enough to commit and to index in under ten minutes on CPU: every chunk
 holding a gold span for a stratified subset of the golden set, plus a sample of
 distractors drawn from the same corpus.
 
 **The number this produces is a tripwire, not a quality measure.** Recall against ~2,000
 chunks is not comparable to recall against 24,650 — fewer distractors is an easier
-retrieval problem, and the CI figure will read higher than the headline 0.7403. It is
+retrieval problem, and the CI figure will read higher than the headline 0.7377. It is
 useful for one thing: noticing that a change to chunking, fusion, filtering or reranking
 moved retrieval, on every push, for free. The floor in the workflow is calibrated against
 this corpus and means nothing against any other.

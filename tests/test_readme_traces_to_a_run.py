@@ -1,9 +1,8 @@
 """Every headline number in the README must come from a recorded run.
 
-The build guide's rule for the final evaluation is "no hand-edited metrics anywhere,
-ever", and a rule that lives only in a document is one nobody can enforce. This asserts
-it: each value in the README's results table is parsed back out and compared against the
-frozen run it claims to come from.
+No metric in this repository is edited by hand, and a rule that lives only in a document
+is one nobody can enforce. This asserts it: each value in the README and the results table
+is parsed back out and compared against the frozen run it claims to come from.
 
 It is the same standing rule this repository keeps rediscovering — anything that describes
 the system must be pinned to the artifact the system actually produced, and the pinning
@@ -52,11 +51,9 @@ def _final_records() -> list[dict]:
     """The records of the run history says is final — resolved by name, never by glob.
 
     `sorted(glob("*-final.json"))[-1]` looks like "the newest final run" and is actually
-    alphabetical order. Two files match that pattern here and the an earlier stage one
-    (`semantic-hybrid-rr-final.json`, 75 questions) sorts last, so every check using that
-    idiom was reading a run from two weeks before the one the README quotes. The
-    hallucination guard passed against it for the wrong reason, since q055 fabricates in
-    both.
+    alphabetical order. Two files match that pattern here and the older one
+    (`semantic-hybrid-rr-final.json`, the 75-question set) sorts last, so every check using
+    that idiom was reading a run from two weeks before the one the README quotes.
 
     Same rule as everywhere else in this repo: identify the artifact, do not approximate it.
     """
@@ -102,8 +99,8 @@ def test_the_readme_names_the_run_its_numbers_come_from():
 
 ROUNDED = {
     "74%": ("recall_at_16", 0),
-    "100%": ("citation_validity", 0),
-    "90%": ("abstention_recall", 0),
+    "95%": ("abstention_recall", 0),
+    "12%": ("over_refusal_rate", 0),
 }
 
 
@@ -139,10 +136,10 @@ def test_the_baseline_tracks_the_final_run():
 # ------------------------------------------------------------------- the blog post
 
 BLOG_CLAIMS = {
-    "0.7403": "recall_at_16",
-    "0.7016": "recall_at_16_micro",
-    "0.9048": "abstention_recall",
-    "0.1160": "over_refusal_rate",
+    "0.7377": "recall_at_16",
+    "0.7000": "recall_at_16_micro",
+    "0.9474": "abstention_recall",
+    "0.1202": "over_refusal_rate",
 }
 
 
@@ -193,3 +190,86 @@ def test_blog_post_counts_match_the_records():
     assert f"abstained on {len(abstained)}" in text
     assert f"**{answered} anyway**" in text
     assert f"**{round(100 * answered / len(missed))}% of the time**" in text
+
+
+# ------------------------------------------------------------ counts quoted in prose
+
+def _negatives_and_misses():
+    import sys
+    sys.path.insert(0, str(ROOT / "evals"))
+    import metrics as M
+
+    records = _final_records()
+    negatives = [r for r in records if r["type"] in M.NEGATIVE_TYPES]
+    answerable = [r for r in records if r["type"] not in M.NEGATIVE_TYPES]
+    missed = [r for r in answerable
+              if (M.recall_at_k(r["retrieved"], r["gold_spans"], 16) or 0) == 0]
+    return M, records, negatives, answerable, missed
+
+
+def test_readme_counts_match_the_records():
+    """The README gives counts beside its percentages, because 95% of 19 and 95% of 190
+    are different claims. Each count is recomputed here."""
+    M, records, negatives, answerable, missed = _negatives_and_misses()
+    text = README.read_text()
+    declined = sum(M.refused(r) for r in negatives)
+    wrongly = sum(M.refused(r) for r in answerable)
+    abstained = sum(M.refused(r) for r in missed)
+
+    assert f"Measured on {len(records)} questions" in text
+    assert f"({declined} of {len(negatives)})" in text
+    assert f"({wrongly} of {len(answerable)})" in text
+    assert f"refuses {declined} of the {len(negatives)} questions" in text
+    assert f"On {len(missed)} answerable questions" in text
+    assert f"It declined {abstained} of those and answered {len(missed) - abstained}" in text
+
+
+def test_readme_cost_and_latency_round_from_the_run():
+    run = _final_run()
+    text = README.read_text()
+    assert f"**${run['cost_usd_per_query']:.2f}**" in text
+    assert f"median question took {round(run['p50_latency_ms'] / 1000)} seconds" in text
+
+
+def test_readme_uncited_sentence_share_matches_the_records():
+    """"Not every sentence is cited" is quantified in the README, so the figure is
+    recomputed with the metric's own sentence splitter and citation pattern."""
+    M, records, *_ = _negatives_and_misses()
+    sentences = [s for r in records if not M.refused(r)
+                 for s in M._claim_sentences(r["answer"])]
+    uncited = sum(1 for s in sentences if not M._CITATION.search(s))
+    assert f"{round(100 * uncited / len(sentences))}% of the sentences" in README.read_text()
+
+
+REVIEW = ROOT / "evals" / "zero_recall_review.jsonl"
+VERDICTS = {
+    "correct_uncredited": "right, from a passage the scorer doesn't credit",
+    "declined_in_prose": "a refusal, stated partway through the answer",
+    "partial": "grounded in real passages, but answering a nearby question",
+    "wrong": "wrong",
+}
+
+
+def test_the_hand_review_covers_exactly_the_answered_misses():
+    """The 18 answered-with-zero-recall cases were classified by reading them. The
+    classification is a human judgement, but which questions it covers is not: if the run
+    or the labels change, the review must be redone rather than left describing a
+    different set."""
+    M, _, _, _, missed = _negatives_and_misses()
+    answered = {r["id"] for r in missed if not M.refused(r)}
+    review = [json.loads(line) for line in REVIEW.read_text().splitlines() if line.strip()]
+    assert {row["id"] for row in review} == answered
+    assert {row["verdict"] for row in review} <= set(VERDICTS)
+
+
+@pytest.mark.parametrize("doc", [README, ROOT / "blog" / "measuring-refusal.md"],
+                         ids=["readme", "blog"])
+def test_review_breakdown_matches_the_review_file(doc):
+    from collections import Counter
+
+    review = [json.loads(line) for line in REVIEW.read_text().splitlines() if line.strip()]
+    counts = Counter(row["verdict"] for row in review)
+    text = doc.read_text()
+    for verdict, label in VERDICTS.items():
+        assert re.search(rf"\| {re.escape(label)} \| {counts[verdict]} \|", text), (
+            f"{doc.name}: row {label!r} should show {counts[verdict]}")

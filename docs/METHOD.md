@@ -1,22 +1,23 @@
 # Method
 
-The detail behind the [README](../README.md). Every figure here comes from one frozen run —
+The detail behind the [README](../README.md). The results below come from one frozen run,
 [`semantic-hybrid-rr-ctx-ag-final`](../evals/results/semantic-hybrid-rr-ctx-ag-final.json),
-202 questions, 248 gold spans. Nothing is hand-edited, and a test asserts these files
-cannot quote a number that run did not produce.
+202 questions and 250 gold spans, re-scored after two golden-set labels were corrected
+(see [Label corrections](#label-corrections)). No value is edited by hand, and
+`tests/test_readme_traces_to_a_run.py` checks each row of the table against the run.
 
 ## Results
 
 | Metric | Value | What it means |
 |---|---|---|
-| **recall@16 (macro)** | **0.7403** [0.682, 0.793] | Share of needed evidence that reaches the model |
-| recall@16 (micro) | 0.7016 [0.642, 0.755] | Same, weighted by span rather than by question |
-| — single-span questions | 0.8246 (n=114) | |
+| **recall@16 (macro)** | **0.7377** [0.683, 0.792] | Share of needed evidence that reaches the model |
+| recall@16 (micro) | 0.7000 [0.641, 0.753] | Same, weighted by span rather than by question |
+| — single-span questions | 0.8190 (n=116) | |
 | — multi-span questions | 0.5970 (n=67) | The hard tier, and the honest one |
-| MRR | 0.4633 | |
-| **citation validity** | **1.0000** | No answer cited a source that wasn't supplied |
-| abstention recall | 0.9048 | Of questions with no answer, how many it declined |
-| over-refusal rate | 0.1160 | Of answerable questions, how many it wrongly declined |
+| MRR | 0.4637 | |
+| **abstention recall** | **0.9474** (18 of 19) | Of questions with no answer, how many it declined |
+| **over-refusal rate** | **0.1202** (22 of 183) | Of answerable questions, how many it wrongly declined |
+| citation validity | 1.0000 | Every `[S#]` marker is in range. A format check; see below |
 | citation density | 1.0420 | Citations per substantive claim |
 | route accuracy | 0.9485 | |
 | cost / query | $0.0339 | |
@@ -33,16 +34,43 @@ drift.
 
 Two figures moved between those runs and neither is a finding. MRR shifted +0.0005 while
 recall did not, which is what a rank permutation *inside* the top 16 looks like — recall
-asks whether a span is in the set, MRR asks where. Abstention recall went 0.8571 to 0.9048,
-which is one question of 21 negatives changing its mind. At n=21 a single flip is 4.8
-points.
+asks whether a span is in the set, MRR asks where. Abstention recall went 0.8571 to 0.9048
+on the labels of the time, which is one of 21 negatives changing its mind. With 19
+negatives now, a single flip is 5.3 points, and the 95% interval on 18 of 19 is roughly
+75% to 99%.
 
 ### Citation validity is 1.0 and that is not as good as it sounds
 
-Every citation marker points at a source that was actually supplied. It is still possible
-to fabricate: q055 invents an executive's compensation and cites a real 8-K cover page,
-which satisfies the metric completely. The marker is valid; the page just doesn't contain
-the claim. See the limitations below.
+The check passes when every `[S#]` marker falls between 1 and the number of sources
+supplied. It can only fail if the model invents an out-of-range marker, so it says nothing
+about whether the cited passage is the right one. q188 shows the gap: asked how Capital
+One's liquidity disclosure changed between its 2024 and 2026 10-Ks, the system reported the
+2025 10-K's Q4 2024 figures as the 2024 filing's. Every figure is in the passage it cites,
+and the answer is still wrong. It scores 1.0.
+
+A related gap: 28% of claim sentences in answered questions carry no marker at all (1.88
+per question on average, the `uncited_claims` metric), so citation density above 1.0 does
+not mean every sentence is cited.
+
+### Label corrections
+
+Two hand-written negatives turned out to be answerable from the corpus, and both are
+relabelled `single_hop`:
+
+- **q055**, Jamie Dimon's 2025 compensation. Written as unanswerable on the assumption that
+  CEO pay is only in the proxy statement. JPMorgan also reports it in an Item 5.02(e) 8-K
+  each January, `JPM_8K_2026-01-22_000052` is in the corpus, and the system's answer of
+  $43,000,000 quoted it and cited it correctly. This had been documented as the project's
+  headline hallucination.
+- **q063**, named FOMC votes on the balance-sheet runoff change. The March 2025 statement
+  records every vote on the action that slowed runoff.
+
+Every negative was then checked against the full chunk store rather than an assumption
+about where a fact is disclosed; the other 19 hold. `scripts/rescore.py` re-scored the
+frozen run from its existing outputs, with no API calls, and the run file records the
+re-score in a `rescored` block. Before the fix: recall@16 0.7403, abstention recall 0.9048
+(19 of 21), over-refusal 0.1160 (21 of 181). The full account is in
+[`notes/failures.md`](../notes/failures.md#q055-was-a-golden-set-label-error-not-a-hallucination).
 
 ## Architecture
 
@@ -74,7 +102,7 @@ flowchart TB
     GEN --> ANS["Answer plus citations, or INSUFFICIENT_CONTEXT"]
 
     subgraph EVAL["EVALUATION LOOP - what gates every merge"]
-        GOLD["Golden set: 202 questions, 248 spans, 21 negatives"] --> RUN["run_eval.py"]
+        GOLD["Golden set: 202 questions, 250 spans, 19 negatives"] --> RUN["run_eval.py"]
         RUN --> DET["recall@16, MRR, citation validity, abstention pair, route accuracy"]
         DET --> STAT["Wilson intervals, paired bootstrap, split by span count"]
         STAT --> ML["MLflow"]
@@ -86,18 +114,6 @@ flowchart TB
 
     ANS --> RUN
 ```
-
-<!-- Every label is quoted, and that is load-bearing rather than tidy. GitHub's mermaid
-     parses `@` as the LINK_ID token from the `id@` edge syntax, so an unquoted
-     `DET[recall@16, ...]` is a parse error and GitHub renders the raw source instead:
-
-       Parse error on line 26: ...py] RUN --> DET[recall@16, MRR,
-       Expecting 'AMP', 'COLON', 'PIPE', ... got 'LINK_ID'
-
-     Local mermaid 11.4.1 parses the unquoted version happily, so a local check is not a
-     check of what GitHub does. The quoting fix comes from reading GitHub's own error
-     message. The rendered result has not been confirmed visually — GitHub renders mermaid
-     client-side and the headless browser used here does not execute it. -->
 
 **Corpus:** 10 institutions — AXP, BAC, C, COF, DFS, GS, JPM, SYF, USB, WFC — as 24,650
 filing chunks plus 18,498 CFPB complaint chunks.
@@ -119,14 +135,22 @@ retrieved chunk counts as a hit when the document matches exactly, it shares a c
 is reachable by some chunk. Low recall is therefore real retrieval failure, not a metric
 artifact. Without that check the recall number means nothing.
 
-**Golden set: 202 questions, 248 gold spans** — 114 single-hop, 42 multi-hop, 25 temporal,
-13 unanswerable-but-in-domain, 8 out-of-scope. Provenance stated exactly: 21 hand-written
-(all the negatives), 127 LLM-drafted and machine-verified, 54 LLM-drafted and still pending
-human review. The negatives are hand-written because models are bad at inventing
-plausible-but-absent facts, and those are the highest-value items in the file.
+**Golden set: 202 questions, 250 gold spans** — 116 single-hop, 42 multi-hop, 25 temporal,
+11 unanswerable-but-in-domain, 8 out-of-scope. Provenance, from the `provenance` field:
+
+- 181 drafted by Claude Opus (`scripts/draft_golden.py`) from sampled passages. Every gold
+  snippet is verbatim from its filing and reachable in the index. 127 of them also passed
+  `scripts/verify_golden.py`'s triviality and duplicate checks; the first 54 predate that
+  script. No row is marked as reviewed by a person.
+- 21 written by hand as negatives, because models are bad at inventing plausible-but-absent
+  facts. Two of them turned out to be answerable (see Label corrections), leaving 19.
+
+The drafter and the system under test are both Claude models. Questions phrased the way
+that family phrases things probably flatter the retriever, so treat recall as an upper
+bound for questions a person would write.
 
 **Negatives are scored separately.** Faithfulness against an empty ground truth is
-meaningless, so the 21 negatives are scored by the abstention pair instead. Both directions
+meaningless, so the 19 negatives are scored by the abstention pair instead. Both directions
 get reported: a system that refuses everything scores perfectly on one and catastrophically
 on the other.
 
@@ -149,7 +173,7 @@ estimates was noise with an ordering printed on it.
 
 The plan was two tiers with the retrieval eval on every push, because a gate that only
 re-reads recorded numbers gates nothing about the code in the diff. It does run a real eval,
-against a committed 1,903-chunk fixture carved out of the real corpus —
+against a committed 1,889-chunk fixture carved out of the real corpus —
 `scripts/make_ci_fixture.py` selects gold-bearing chunks using the metric's own `is_hit`, so
 the fixture cannot disagree with the metric that reads it.
 
@@ -163,8 +187,8 @@ faiss-cpu and torch each load an OpenMP runtime into one process and dense retri
 segfaults. Linux wheels carry no such conflict, so importing that workaround into CI bought
 nothing and pinned the cross-encoder to one of two vCPUs.
 
-The floor of 0.80 against a measured 0.8167 is a tripwire, not a quality number — retrieval
-against 1,903 chunks is far easier than against 24,650.
+The floor of 0.80 against a measured 0.8500 is a tripwire, not a quality number — retrieval
+against 1,889 chunks is far easier than against 24,650.
 
 The gate is built so it cannot pass quietly:
 
@@ -184,16 +208,16 @@ The same command with the context budget cut from 16 to 2, nothing else changed:
 
 | config | recall@16 | multi-span | single-span | gate |
 |---|---|---|---|---|
-| `top_k_context=16` (shipped) | 0.8167 | 0.8438 | 0.7857 | **passes**, exit 0 |
-| `top_k_context=2` (broken) | 0.5333 | **0.4375** | 0.6429 | **fails**, exit 1 |
+| `top_k_context=16` (shipped) | 0.8500 | 0.7812 | 0.9286 | **passes**, exit 0 |
+| `top_k_context=2` (broken) | 0.5833 | **0.4062** | 0.7857 | **fails**, exit 1 |
 
 ```
 GATE FAILED
-  x recall_at_16 = 0.5333 is below the floor of 0.8000
+  x recall_at_16 = 0.5833 is below the floor of 0.8000
 ```
 
-Multi-span is hit about three times as hard as single-span, −0.406 against −0.143, which is
-the shape this break should produce: fewer context slots cost most where a question needs
+Multi-span is hit about two and a half times as hard as single-span, −0.375 against
+−0.143, which is the shape this break should produce: fewer context slots cost most where a question needs
 evidence from several documents.
 
 An earlier version of this table showed single-span recall as *identical* across both arms.
@@ -201,7 +225,9 @@ That was a property of the fixture, not of the change. When the fixture was rebu
 judged tier turned out to be missing evidence for 7 of its 12 questions — the gold chunk for
 a single-span question was no longer always inside the top 2, so cutting the budget costs
 that tier too. The claim was true of one artifact, and needed re-measuring when the artifact
-changed rather than repeating.
+changed rather than repeating. The fixture was rebuilt once more after the q055 and q063
+relabel, because its question sample is drawn by type, and the table above is from that
+rebuild.
 
 ## The analytics module
 
@@ -293,8 +319,9 @@ plus config.
 
 - **The corpus is 10 institutions.** Anything outside them is out of scope by construction,
   and the system is expected to refuse.
-- **54 of 202 golden questions are LLM-drafted and not yet human-reviewed.** The other 148
-  are hand-written or machine-verified. The headline number includes all 202.
+- **181 of 202 golden questions were drafted by a Claude model and checked by script, not
+  by a person.** 54 of those predate the triviality and duplicate checks. The headline
+  number includes all 202.
 - **About half the multi-span questions yoke arbitrary facts** — two gold snippets sharing
   under 10% of their content. That is a property of how the set was generated, and it partly
   explains the 0.597 multi-span recall.
@@ -306,10 +333,12 @@ plus config.
   `consumer_disputed` in April 2017 and it is absent from this extract.
 - **Section parsing falls back on a minority of filings**, so some chunks carry a
   `full_document` label rather than a real item.
-- **q055 is a deliberate failing test.** The system fabricates an executive's compensation
-  and cites a real 8-K cover page, scoring 1.0 on citation validity — the metric satisfied
-  and the answer wrong. Marked `xfail(strict=True)` so that fixing it turns the gate loudly
-  XPASS rather than quietly green.
+- **The refusal detector reads only the start of an answer.** Two answers in the frozen run
+  write `INSUFFICIENT_CONTEXT` partway through and are counted as answered.
+- **The span matcher credits only the named document.** Of 18 answers given after a
+  retrieval miss, 8 were right from another filing or passage the matcher does not credit
+  ([`evals/zero_recall_review.jsonl`](../evals/zero_recall_review.jsonl)), so recall
+  slightly understates what reaches the model.
 
 A running log of every failure and its mechanism is in
 [`notes/failures.md`](../notes/failures.md).

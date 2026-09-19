@@ -113,7 +113,7 @@ def test_secrets_never_enter_the_build_context():
 
 def test_index_is_mounted_read_only_not_baked():
     """961 MB of rebuildable artifact. Baked, it would be in every layer and every push;
-    mounted rw, a bug in a request path could corrupt an 85-minute rebuild."""
+    mounted rw, a bug in a request path could corrupt a 90-minute rebuild."""
     assert "data/" in DOCKERIGNORE
     assert "./data:/app/data:ro" in COMPOSE["services"]["api"]["volumes"]
 
@@ -335,27 +335,26 @@ def test_the_relevancy_threshold_moves_with_the_context_budget():
         "RELEVANCY_THRESHOLD must be derived from the served top_k_context"
 
 
-def test_the_known_hallucination_is_still_present_in_the_last_real_run():
-    """q055's xfail must describe reality, and reality here means the real corpus.
+def test_q055_is_answered_from_the_jpm_8k_that_discloses_it():
+    """q055 asks for Jamie Dimon's 2025 compensation. It was labelled unanswerable on the
+    assumption that CEO pay appears only in the DEF 14A proxy, which is not in the corpus.
+    JPMorgan also discloses it in an Item 5.02(e) 8-K each January, and
+    JPM_8K_2026-01-22 is in the corpus. The answer in the frozen run is correct and cites
+    the passage containing the figure.
 
-    The judged tier runs against the 1,903-chunk CI fixture, which does not contain the
-    plausible-but-irrelevant passage the fabrication is built from — so on the fixture the
-    system abstains correctly and a strict xfail reports XPASS, which reads as "fixed,
-    delete the marker". It is not fixed: the an earlier stage final run against the full index still
-    answers with a fabricated compensation figure and does not abstain.
-
-    This test is the thing that would stop the marker being deleted on the strength of a
-    fixture run. If it ever fails, the hallucination genuinely is gone and the marker
-    should go with it.
+    This pins that: the label is single_hop with a gold span in that filing, the answer
+    carries the figure, and the source it cites contains it.
     """
     import json
 
-    from test_smoke_deepeval import KNOWN_HALLUCINATION
+    golden = {json.loads(l)["id"]: json.loads(l)
+              for l in (ROOT / "evals" / "golden_set.jsonl").read_text().splitlines()
+              if l.strip()}
+    label = golden["q055"]
+    assert label["type"] == "single_hop"
+    assert [g["doc_id"] for g in label["gold_spans"]] == ["JPM_8K_2026-01-22_000052"]
+    assert "$43,000,000" in label["gold_spans"][0]["snippet"]
 
-    # Resolved by the run_name history records, not by glob order: two files match
-    # *-final.json and the an earlier stage one sorts last alphabetically, so this guard was reading
-    # a run from two weeks before the one the README quotes — and passing, because q055
-    # fabricates in both.
     history = ROOT / "evals" / "history.jsonl"
     rows = [json.loads(l) for l in history.read_text().splitlines() if l.strip()]
     finals = [r for r in rows if r.get("run_name", "").endswith("-final")]
@@ -364,23 +363,17 @@ def test_the_known_hallucination_is_still_present_in_the_last_real_run():
     path = ROOT / "evals" / "results" / f"{finals[-1]['run_name']}.json"
     if not path.exists():
         pytest.skip(f"{path.name} not on disk")
-    records = {r["id"]: r for r in json.loads(path.read_text())["records"]}
+    record = {r["id"]: r for r in json.loads(path.read_text())["records"]}["q055"]
 
-    for qid in KNOWN_HALLUCINATION:
-        record = records.get(qid)
-        if record is None:
-            continue
-        assert record["abstained"] is False, (
-            f"{qid} now abstains against the real corpus — the known hallucination looks "
-            f"fixed. Verify against a fresh full run, then remove it from "
-            f"KNOWN_HALLUCINATION and delete this assertion.")
-
-
-def test_the_xfail_is_scoped_to_the_corpus_it_describes():
-    source = (ROOT / "tests" / "test_smoke_deepeval.py").read_text()
-    assert "RUNNING_ON_FIXTURE" in source, (
-        "the known-hallucination xfail must not apply when running against the CI "
-        "fixture, where the failure it describes cannot occur")
+    assert record["abstained"] is False
+    assert "43,000,000" in record["answer"]
+    # Run records keep the answer text, not the parsed markers, so read them the way
+    # generate.py does.
+    cited = [int(n) for n in re.findall(r"\[S(\d+)\]", record["answer"])]
+    assert cited, "q055 answered without citing a source"
+    first = record["retrieved"][cited[0] - 1]
+    assert first["doc_id"] == "JPM_8K_2026-01-22_000052"
+    assert "43,000,000" in first["text"]
 
 
 def test_the_demo_import_path_does_not_require_a_web_framework():
