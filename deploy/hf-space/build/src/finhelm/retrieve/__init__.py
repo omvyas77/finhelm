@@ -147,9 +147,9 @@ def _from_collection(query: str, collection: str, cfg: Config, filters: dict | N
     if not filters or len(hits) >= k:
         return hits
 
-    # Backoff. A filter derived from the question can be wrong, an amendment, an exhibit,
-    # a fact carried in an 8-K rather than the 10-K the question names, and a filter that
-    # empties the pool costs recall that no later stage can recover. Refilling from the
+    # Backoff. A filter derived from the question can be wrong (an amendment, an exhibit,
+    # a fact carried in an 8-K rather than the 10-K the question names) and a filter that
+    # empties the pool costs recall no later stage can recover. Refilling from the
     # unfiltered ranking keeps the filtered hits in front and spends only the slots the
     # filter could not fill, so a good filter loses nothing and a bad one degrades to the
     # unfiltered behaviour instead of to nothing.

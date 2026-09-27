@@ -5,7 +5,7 @@ statute references, "Item 1A", and dollar figures. A 384-dim embedding smears "$
 billion" and "$1.5 billion" onto nearly the same point; an inverted index does not.
 
 Tokenisation keeps `$`, `%`, `.` and `-` inside tokens rather than using a bare
-`.split()`, so "$1.2bn", "10-K" and "1a" survive as single terms, the exact tokens this
+`.split()`, so "$1.2bn", "10-K" and "1a" survive as single terms: the exact tokens this
 retriever is here to match.
 """
 

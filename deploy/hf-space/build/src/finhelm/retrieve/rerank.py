@@ -2,8 +2,8 @@
 
 Bi-encoders (what the FAISS index holds) embed the query and the document independently,
 so the score is a dot product between two vectors that never saw each other. That is what
-makes the index possible, documents are embedded once, offline, and it is also its
-ceiling: the model cannot condition its reading of the passage on the question.
+makes the index possible (documents are embedded once, offline) and also what caps it:
+the model cannot condition its reading of the passage on the question.
 
 A cross-encoder runs query and passage through the network together and scores the pair
 directly. It is far more accurate and completely unindexable: scoring N passages means N

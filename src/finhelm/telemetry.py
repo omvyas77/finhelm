@@ -116,7 +116,7 @@ def span(name: str, **attributes: Any) -> Iterator[Any]:
     """A span, or nothing at all when tracing is off.
 
     Attributes are set individually rather than passed to start_as_current_span so that a
-    None, an unrouted collection, a missing token count, is skipped instead of raising
+    None (an unrouted collection, a missing token count) is skipped instead of raising
     inside the instrumentation.
     """
     try:

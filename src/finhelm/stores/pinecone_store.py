@@ -13,7 +13,7 @@ because "we chose not to" is a better answer than "we never considered it".
 
 The three methods below are what an implementation owes the protocol. The only part that
 needs real thought is `search`: Pinecone's metadata filters use their own operator syntax
-($eq, $in), so `stores.base.matches` semantics, scalar, membership, prefix, would need
+($eq, $in), so `stores.base.matches` semantics (scalar, membership, prefix) would need
 translating, and **prefix has no native equivalent**. That matters here: the filing-year
 filter is a prefix over a date column. It would have to become an explicit year field at
 upsert time, which is a schema decision forced by the backend rather than by the data.

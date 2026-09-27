@@ -182,7 +182,7 @@ _IX_HIDDEN = re.compile(r"(?is)<ix:hidden\b.*?</ix:hidden>")
 
 def to_text(html: str) -> str:
     """Strip markup. Dense numeric tables become sludge in plain text, so drop them."""
-    # Inline-XBRL filings carry a hidden block of tagged facts, CIK, axis members,
+    # Inline-XBRL filings carry a hidden block of tagged facts: CIK, axis members,
     # repeated dates, the company name. It renders as nothing but survives text
     # extraction as a short, keyword-dense chunk, which BM25's length normalisation then
     # ranks *above* real prose for any query naming a company.

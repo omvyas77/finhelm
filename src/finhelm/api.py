@@ -6,7 +6,7 @@ than asking anyone to trust a number in a README. A system that reports recall@1
 and an over-refusal rate of 0.1202 to whoever asks is making a checkable claim.
 
 `/config` exists for the same reason. Every retrieval knob that has been argued about in
-this project, chunk size, pool width, the RRF constant, whether windowing is on, is a
+this project (chunk size, pool width, the RRF constant, whether windowing is on) is a
 Config field, so returning `asdict(cfg)` makes the running configuration inspectable
 instead of inferred from the deployment.
 """
