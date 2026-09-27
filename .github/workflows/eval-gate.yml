@@ -206,37 +206,17 @@ jobs:
     if: github.event_name == 'pull_request'
     needs: fast
     runs-on: ubuntu-latest
-    # 60, and the number is a consequence of a bug fix rather than of slow hardware.
-    #
-    # judge.py paces the judge at 12 RPM to stay inside the Gemini free tier: one call
-    # every five seconds, globally, since the quota is per project per model.
+    # The 60-minute budget is set by the judge's rate limit, not by the hardware.
+    # judge.py paces at 12 RPM to stay inside the Gemini free tier, and
     # ContextualRelevancyMetric judges every retrieved context, so the floor is
-    # questions x k calls: 12 x 8 = 96 (~8 min) under the bare Config() this suite used
-    # to score, and 12 x 16 = 192 (~16 min) under the config the service actually serves.
-    # Faithfulness claims push the measured total to ~32 minutes.
+    # questions x k calls: 12 x 16 = 192 at the served context size, about 16 minutes,
+    # and faithfulness claims take the measured total to ~32.
     #
-    # So correcting the gate to score the shipped config doubled its cost, and the original
-    # "~6 minute" estimate described a configuration nobody runs. The first
-    # run after the fix was cancelled by a 30-minute limit.
-    #
-    # The lever is the 12 RPM, not the 16 contexts. The floor is questions x k x 5s, and
-    # k is the term that must not move: judging faithfulness against only the passages the
-    # answer cited measures self-consistency, not groundedness. A system that fabricates a
-    # claim and cites a plausible-looking passage would pass cleanly, because the only
-    # evidence examined is the evidence the answer selected. That would retire the one
-    # gate able to catch the failure this system exists to prevent.
-    #
-    # Attack the rate instead, in this order:
-    #   1. A paid Gemini tier. At 60 RPM the same suite is ~6 minutes, and the arithmetic
-    #      collapses with nothing given up.
-    #   2. A different judge model for the gate. This is a PR check, not a published
-    #      metric; it needs to be consistent and fast, not identical to the judge used for
-    #      a final evaluation.
-    #   3. Fewer questions at full k. 6 x 16 costs what 12 x 8 did and preserves what the
-    #      metric means. It weakens coverage, but plainly and statably.
-    # If none are available, sample contexts at random rather than by citation: random
-    # sampling is a weaker version of the same measurement; cited-only measures
-    # something different.
+    # Reduce the rate limit, not k. Judging faithfulness against only the passages an
+    # answer cited measures self-consistency rather than groundedness, so a fabricated
+    # claim with a plausible citation would pass. In order: a paid Gemini tier (60 RPM
+    # puts the suite at ~6 minutes), a faster judge model for PR checks only, or fewer
+    # questions at full k.
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4

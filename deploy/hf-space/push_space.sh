@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Create the Space and push it. Run from the repo root.
 #
-#   huggingface-cli login          # once, needs a WRITE token from
-#                                  # https://huggingface.co/settings/tokens
+#   hf auth login          # once, with a WRITE token from
+#                          # https://huggingface.co/settings/tokens
 #   bash deploy/hf-space/push_space.sh <your-hf-username>
 #
 # Then add ANTHROPIC_API_KEY as a Space *secret* in the Space's Settings page. It is the
@@ -16,9 +16,11 @@ BUILD="deploy/hf-space/build"
 STAGE="$(mktemp -d)/finhelm"
 
 command -v git-lfs >/dev/null || { echo "git-lfs required: brew install git-lfs"; exit 1; }
+command -v hf >/dev/null || { echo "hf CLI required: pip install -U huggingface_hub"; exit 1; }
 
-# streamlit is no longer an accepted SDK; the runtime is pinned by the Dockerfile.
-huggingface-cli repo create finhelm --type space --space_sdk docker -y || true
+# docker, not streamlit: the streamlit SDK no longer accepts this app's dependency set,
+# so the runtime is pinned by build/Dockerfile instead. Already-exists is not an error.
+hf repo create "$SPACE" --repo-type space --space_sdk docker -y || true
 git clone "https://huggingface.co/spaces/$SPACE" "$STAGE"
 
 cp -R "$BUILD"/. "$STAGE"/
@@ -37,8 +39,11 @@ cd "$STAGE"
 git lfs install
 git lfs track "*.faiss" "*.jsonl" "*.parquet"
 git add -A
-git -c user.email="$(git -C - config user.email 2>/dev/null || echo noreply@huggingface.co)" \
-    -c user.name="finhelm" commit -q -m "finhelm: Streamlit demo with the served config and its index"
+# The Space repo has no identity configured; borrow the caller's, or fall back.
+EMAIL="$(git config --global user.email || echo noreply@huggingface.co)"
+NAME="$(git config --global user.name || echo finhelm)"
+git -c user.email="$EMAIL" -c user.name="$NAME" \
+    commit -q -m "Deploy the demo with the served config and its index"
 git push
 echo
 echo "Space: https://huggingface.co/spaces/$SPACE"
