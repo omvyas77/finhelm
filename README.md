@@ -19,6 +19,10 @@ checked by script: each gold passage is verbatim from its filing and findable in
 The other 21 were written by hand to have no answer in the corpus, and two of those turned
 out to have one.
 
+![The demo answering a question about Discover's 2024 10-K. Each claim carries a numbered
+marker back to the passage it came from, and the sidebar shows the measured quality of the
+run behind those numbers.](docs/demo.png)
+
 ---
 
 ## Why this exists
@@ -31,6 +35,9 @@ number.
 
 This retrieves the specific passages, answers only from them, shows you each one with a
 link to the filing, and says "I don't have that" when the evidence isn't there.
+
+![The passages behind that answer, ranked by how well each matches the question, each one
+opening the filing it was taken from.](docs/demo-sources.png)
 
 The refusal is the part that makes it usable in finance, so it's measured as carefully as
 the answers.
