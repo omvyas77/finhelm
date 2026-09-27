@@ -4,7 +4,7 @@ DeepEval metrics do not make one call per test. FaithfulnessMetric extracts the 
 from an answer and then issues a verdict call per claim, so a single question can be five
 to ten requests, and a twelve-question gate is comfortably over a hundred. The Gemini free
 tier allows fifteen requests per minute. The gate therefore cannot be made reliable by
-tuning concurrency — `async_mode=False` does not help, because the limit is per minute,
+tuning concurrency, `async_mode=False` does not help, because the limit is per minute,
 not per instant.
 
 What made this expensive to diagnose is how it presented. Every test passed when run
@@ -42,7 +42,7 @@ MAX_ATTEMPTS = 6
 # The other free-tier quota, and the one pacing cannot help with: 500 generate_content
 # requests per project per day.
 #
-# Budget in *calls*, not jobs — the two differ by an order of magnitude and confusing them
+# Budget in *calls*, not jobs, the two differ by an order of magnitude and confusing them
 # is how this cap keeps arriving as a surprise. Ragas reports 128 "jobs" for a 32-row pass
 # (32 rows x 4 metrics), but Faithfulness decomposes each answer into claims and issues a
 # verdict request per claim, exactly as DeepEval's does. One job is therefore several
@@ -57,7 +57,7 @@ DEFAULT_RPD = 500
 _DAILY_MESSAGE = (
     "judge daily quota exhausted for {model} "
     f"(free tier: {DEFAULT_RPD} requests/project/day).\n"
-    "Retrying will not help — the window resets at midnight Pacific. Options:\n"
+    "Retrying will not help, the window resets at midnight Pacific. Options:\n"
     "  - re-run later; Ragas' disk cache at .cache/ragas replays already-scored rows "
     "free, so a resumed pass only pays for what failed\n"
     "  - use a paid key, or a different judge model with its own quota\n"
@@ -66,7 +66,7 @@ _DAILY_MESSAGE = (
 )
 
 # Google returns the wait it wants in the error body ("Please retry in 33.42s"). Parsing
-# it is worth the regex — a fixed backoff either sleeps far longer than required or
+# it is worth the regex, a fixed backoff either sleeps far longer than required or
 # retries into the same closed window.
 _RETRY_DELAY = re.compile(r"retry in (\d+(?:\.\d+)?)s")
 
@@ -101,7 +101,7 @@ def _is_rate_limit(exc: Exception) -> bool:
 # The free tier enforces *two* quotas and only one of them is worth retrying. Pacing
 # solves requests-per-minute; nothing solves requests-per-day except waiting for the
 # reset or paying. Google returns both as a 429 carrying "Please retry in 43.8s", which
-# is actively misleading for the daily cap — honouring it burns every attempt in four
+# is actively misleading for the daily cap, honouring it burns every attempt in four
 # minutes and then reports a per-minute problem that isn't the real one.
 _PER_DAY = re.compile(r"PerDay|per day|_requests_per_day", re.IGNORECASE)
 
@@ -172,7 +172,7 @@ def rate_limited_langchain_gemini(model: str, api_key: str, rpm: int = DEFAULT_R
     """The same protection for the Ragas path, which does not go through DeepEval.
 
     `ragas_runner` wraps a LangChain chat model, so none of the pacing or the fail-fast
-    above applied to it — and that gap is why the daily cap kept presenting as a scoring
+    above applied to it, and that gap is why the daily cap kept presenting as a scoring
     pass that merely got slow. Ragas hands a 429 to tenacity, tenacity backs off using the
     "retry in ~40s" hint that is wrong for the per-day quota, the job exceeds its 300s
     timeout mid-backoff, and the metric lands as NaN. Nothing in that chain says "quota":

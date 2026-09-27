@@ -1,7 +1,7 @@
 """Assemble and validate evals/golden_set.jsonl from drafts + hand-written negatives.
 
 Validation is the point of this script. A golden set with a broken row does not throw an
-error at eval time — it quietly scores as a permanent miss for every configuration, which
+error at eval time, it quietly scores as a permanent miss for every configuration, which
 looks like a retrieval weakness in the ablation table and is impossible to distinguish
 from one by reading the numbers.
 
@@ -128,7 +128,7 @@ def main() -> None:
     # Refuse to shrink the golden set without being told to.
     #
     # This script assembles from the original hand-written sources, which is 75 questions.
-    # The set on disk is 202 — the earlier expansion was added by a different path and lives
+    # The set on disk is 202, the earlier expansion was added by a different path and lives
     # only in the file. Running this script therefore *destroys* 127 questions, and it takes
     # no arguments, so anything that executes it destroys them: a shell loop checking that
     # every script imports cleanly ran `python scripts/assemble_golden.py --help`, which is

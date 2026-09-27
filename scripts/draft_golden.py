@@ -10,7 +10,7 @@ Two properties of the output are enforced here rather than left to review:
 
 1. **The snippet must be verbatim from the sampled chunk.** Ground truth is scored by text
    overlap against the source document, so a snippet the model paraphrased would mark the
-   correct passage as a miss and silently depress recall for every configuration equally —
+   correct passage as a miss and silently depress recall for every configuration equally -
    a bias invisible in the ablation table because it moves every row together.
 
 2. **Questions are drafted from `fixed` chunks but grounded on (doc_id, snippet).** The
@@ -69,7 +69,7 @@ Return ONLY a JSON object:
 PAIR_SYSTEM = """You write multi-hop evaluation questions for a financial retrieval system.
 
 You are given TWO passages from different documents. Write ONE question that requires
-BOTH passages to answer — a comparison, a contrast, or a change over time. A question
+BOTH passages to answer, a comparison, a contrast, or a change over time. A question
 answerable from either passage alone is useless and must not be produced.
 
 Hard requirements:
@@ -96,7 +96,7 @@ def verbatim_ok(snippet: str, passage: str) -> bool:
 
     Checked on word tokens rather than characters, because the acceptance rule here must
     match the scoring rule in evals/metrics.py exactly. A character-level check was
-    rejecting valid snippets over punctuation spacing — filings render figures as
+    rejecting valid snippets over punctuation spacing, filings render figures as
     "$118,481" and "(8,512)", the model reproduces the digits faithfully and the spacing
     approximately, and a snippet that differs by one space around a parenthesis is still
     perfectly findable by an n-gram matcher.
@@ -218,7 +218,7 @@ def sample_pairs(df: pd.DataFrame, n: int, rng: random.Random, mode: str) -> lis
     pairs = []
     if mode == "cross_entity":
         # One shuffled pass over 10 tickers yields at most 5 pairs per section, so a
-        # single pass across 4 sections caps out around 20 candidates — not enough slack
+        # single pass across 4 sections caps out around 20 candidates, not enough slack
         # once some drafts are rejected. Repeated shuffles draw different pairings each
         # round, which also stops the same two banks being compared in every question.
         for _ in range(ROUNDS):

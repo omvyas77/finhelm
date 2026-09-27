@@ -1,4 +1,4 @@
-"""Deterministic metrics — no LLM calls, no network, no cost.
+"""Deterministic metrics, no LLM calls, no network, no cost.
 
 These gate every push. The LLM-judged metrics (Ragas, DeepEval) are better at catching
 subtle unfaithfulness but cost money and take minutes, so they run less often; everything
@@ -27,8 +27,8 @@ against would be scored against text it never contained.
 doc_id, by contrast, is identical across all three strategies (verified: 460 documents,
 set-equal). So ground truth records *which document* and *what text within it* answers the
 question, and a retrieved chunk counts as a hit when it overlaps that text. This measures
-the thing we actually care about — did retrieval surface the passage containing the
-answer — and it means one golden set scores every strategy fairly.
+the thing that matters: did retrieval surface the passage containing the answer? It also
+means one golden set scores every strategy fairly.
 """
 
 from __future__ import annotations
@@ -41,8 +41,8 @@ from typing import Iterable, Sequence
 # Matching is done on contiguous word n-grams, not on bag-of-words overlap.
 #
 # Bag-of-words was the first implementation and it was measurably wrong. Financial prose
-# is formulaic — MD&A sections are full of "<line item> increased N percent, primarily
-# driven by <driver>" — so unrelated sentences from the same filing share most of their
+# is formulaic, MD&A sections are full of "<line item> increased N percent, primarily
+# driven by <driver>", so unrelated sentences from the same filing share most of their
 # vocabulary. Scoring a real gold span against one document's sentence_window chunks,
 # 18 chunks cleared an overlap-coefficient threshold of 0.6 and only 6 of them actually
 # contained the passage. Among the false positives were the *same sentence for a
@@ -76,7 +76,7 @@ def overlap(a: str, b: str) -> float:
     """Fraction of b's n-grams present in a, i.e. how much of the gold span the chunk holds.
 
     Reported for diagnostics and threshold tuning; `is_hit` only needs to know whether it
-    is above zero. Asymmetric on purpose — the question is always "how much of the gold
+    is above zero. Asymmetric on purpose: the question is always "how much of the gold
     passage did this chunk capture", never the reverse.
     """
     wa, wb = _words(a), _words(b)
@@ -108,7 +108,7 @@ def _contradicts(chunk_text: str, snippet: str) -> bool:
     window, so a 10-word run still lines up. In filings the number *is* the fact, so two
     passages that both quantify and agree on nothing are about different periods.
 
-    A chunk with no figures at all is not treated as contradicting — that is the shape of
+    A chunk with no figures at all is not treated as contradicting: that is the shape of
     a chunk boundary splitting the gold span, where the prose landed in one chunk and the
     figures in the next, and it should still count as partial evidence.
     """
@@ -121,12 +121,12 @@ def is_hit(chunk: dict, gold: dict, threshold: float = 0.0) -> bool:
 
     Three conditions, each closing a false-positive route found empirically:
 
-      1. doc_id matches exactly — ~2% of filing chunks are byte-identical footnote
+      1. doc_id matches exactly. About 2% of filing chunks are byte-identical footnote
          boilerplate repeated across filers, so text matching alone would manufacture
-         hits from the wrong company;
-      2. a contiguous run of NGRAM words is shared (or the whole snippet, when it is
-         shorter) — formulaic MD&A vocabulary cannot reach that by coincidence;
-      3. the figures do not contradict — see _contradicts.
+         hits from the wrong company.
+      2. A contiguous run of NGRAM words is shared, or the whole snippet when it is
+         shorter. Formulaic MD&A vocabulary cannot reach that by coincidence.
+      3. The figures do not contradict (see _contradicts).
 
     `threshold` is the fraction of the gold span's n-grams the chunk must hold. The
     default 0.0 means "any contiguous run counts", which is what recall should measure
@@ -196,7 +196,7 @@ def _claim_sentences(answer: str) -> list[str]:
 def citation_validity(answer: str, n_sources: int) -> float | None:
     """Fraction of [S#] markers pointing at a source that actually existed.
 
-    Catches fabricated citations — the failure mode users never notice, because an
+    Catches fabricated citations: the failure mode users never notice, because an
     invented [S7] looks exactly as authoritative as a real one.
     """
     cited = set(_CITATION.findall(answer))
@@ -222,7 +222,7 @@ def uncited_claims(answer: str) -> int:
 # The first ablation ranked 18 configurations on a golden set holding 74 gold spans and reported
 # differences as small as 0.01 as if they were results. At p ~ 0.39 the standard error
 # on recall is sqrt(.39*.61/74) ~ 0.057, so the 95% interval on the headline number is
-# roughly +/- 0.11 — wide enough to contain the top six rows of that table. The ranking
+# roughly +/- 0.11, wide enough to contain the top six rows of that table. The ranking
 # was mostly noise with an ordering printed on it.
 #
 # Two things fix that, and both are reported rather than left to the reader:
@@ -234,8 +234,8 @@ def uncited_claims(answer: str) -> int:
 #     questions; pairing removes the question-difficulty variance that dominates here and
 #     is a far more sensitive test.
 #
-# Gold spans are also correlated within a question — a multi-hop question contributes two
-# spans that succeed or fail together more often than chance — so the bootstrap resamples
+# Gold spans are also correlated within a question, a multi-hop question contributes two
+# spans that succeed or fail together more often than chance, so the bootstrap resamples
 # *questions*, not spans. Resampling spans would understate the interval.
 
 
@@ -257,7 +257,7 @@ def bootstrap_paired(a: Sequence[float], b: Sequence[float], rounds: int = 10000
     `a` and `b` must be aligned: element i is the same question under both configs.
     Returns the observed difference, its 95% interval, and the fraction of resamples in
     which b beat a. An interval containing 0 means the runs are indistinguishable on this
-    golden set — which is a finding about the golden set as much as about the configs.
+    golden set, which is a finding about the golden set as much as about the configs.
     """
     if len(a) != len(b):
         raise ValueError(f"unpaired inputs: {len(a)} vs {len(b)}")
@@ -284,7 +284,7 @@ def bootstrap_paired(a: Sequence[float], b: Sequence[float], rounds: int = 10000
         # [-0.0166, +0.0000] from a difference vector that was zero for 180 of 181
         # questions, and a caller testing `low < 0 < high` reads an endpoint of exactly
         # zero as excluding zero and reports a resolved effect where there is none.
-        # Inclusive comparisons are the correct reading — an interval touching zero is
+        # Inclusive comparisons are the correct reading, an interval touching zero is
         # consistent with no difference.
         "resolved": deltas[int(0.025 * rounds)] > 0 or deltas[int(0.975 * rounds)] < 0,
     }
@@ -310,7 +310,7 @@ def bootstrap_ci(values: Sequence[float], rounds: int = 10000, seed: int = 0,
 
 def per_question_recall(records: Sequence[dict], k: int = 5,
                         threshold: float = 0.0) -> dict[str, float]:
-    """Recall per question id — the aligned input bootstrap_paired needs."""
+    """Recall per question id, the aligned input bootstrap_paired needs."""
     return {r["id"]: recall_at_k(r["retrieved"], r.get("gold_spans", []), k, threshold)
             for r in records if r.get("gold_spans")}
 
@@ -351,8 +351,8 @@ def route_accuracy(records: Iterable[dict]) -> float | None:
 
     Compared as sets: for a comparative question the correct answer is both collections,
     and a router that picks one of the two is wrong even though it overlaps the target.
-    That specific failure — answering half a comparison confidently while citing only one
-    side — is the worst one this system produced earlier, so it must not earn partial
+    That specific failure, answering half a comparison confidently while citing only one
+    side, is the worst one this system produced earlier, so it must not earn partial
     credit here.
     """
     scored = [r for r in records if r.get("expected_source")]
@@ -368,7 +368,7 @@ def recall_by_span_count(records: Sequence[dict], k: int = 5,
 
     This is the difficulty axis that actually matters, and reporting one pooled number
     hides it completely. Measured on the 75-question set: questions needing one span score
-    0.559, questions needing two score 0.175 — and 70% of the two-span questions retrieve
+    0.559, questions needing two score 0.175, and 70% of the two-span questions retrieve
     *neither* side, not one of the two.
 
     The pooled figure therefore says more about the mix of question types in the golden
@@ -378,7 +378,7 @@ def recall_by_span_count(records: Sequence[dict], k: int = 5,
 
     Note this is not the same cut as question `type`. Multi-hop questions carry two spans
     by construction, but so do most temporal ones, and single_hop questions occasionally
-    do too — the span count is the property that predicts the score.
+    do too, the span count is the property that predicts the score.
     """
     out: dict[str, float] = {}
     groups: dict[int, list[dict]] = {}
@@ -409,8 +409,8 @@ def aggregate(records: Sequence[dict], k: int = 5, threshold: float = 0.0) -> di
         return sum(vals) / len(vals) if vals else None
 
     # The interval has to describe the same quantity as the point estimate sitting next
-    # to it. `recall_at_k` below is a *macro* average — the mean of per-question recall,
-    # which weights a 2-span question the same as a 1-span one — while a Wilson interval
+    # to it. `recall_at_k` below is a *macro* average, the mean of per-question recall,
+    # which weights a 2-span question the same as a 1-span one, while a Wilson interval
     # on spans-found/spans-total describes the *micro* rate. Those differ whenever
     # questions carry unequal span counts, and on the expanded golden set they differ
     # enough that the macro estimate (0.406) fell outside its own reported "interval"

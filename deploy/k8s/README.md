@@ -10,7 +10,7 @@ question.
 |---|---|
 | `00-namespace.yaml` | |
 | `01-configmap.yaml` | non-secret wiring: OTLP endpoint, data dir, thread pinning |
-| `02-secret.yaml` | template with **no values** — see below |
+| `02-secret.yaml` | template with **no values**, see below |
 | `03-pvc.yaml` | the 961 MB FAISS index, mounted rather than baked or rebuilt |
 | `04-deployment.yaml` | 2 replicas, non-root, three distinct probes |
 | `05-service.yaml` | ClusterIP |
@@ -24,7 +24,7 @@ On `kind` v0.33 / Kubernetes v1.34, then torn down:
 - all seven manifests accepted by a real API server (`kubectl apply --dry-run=server`)
 - Deployment reached `Available 1/1` and the pod `Running`
 - `PersistentVolumeClaim` **Bound**, and `/data` genuinely read-only inside the container
-- `securityContext` took effect — `uid=10001 gid=10001`, non-root
+- `securityContext` took effect: `uid=10001 gid=10001`, non-root
 - `envFrom` wired the ConfigMap through: `OMP_NUM_THREADS=1`, `FINHELM_DATA_DIR=/data`,
   the OTLP endpoint
 - the Service's EndpointSlice selected the pod with `ready=true`
@@ -34,12 +34,12 @@ cluster rather than of the manifests:
 
 1. **`ReadOnlyMany` → `ReadWriteOnce`.** See below; this one is worth reading.
 2. **Resource requests lowered, and the image swapped for `busybox`.** The Deployment
-   requests a measured 3 GiB — a single `/ask` peaks at 2.694 GiB with both models
-   resident plus the index — and the kind node had 2.83 GiB allocatable, so the scheduler
+   requests a measured 3 GiB (a single `/ask` peaks at 2.694 GiB with both models
+   resident plus the index) and the kind node had 2.83 GiB allocatable, so the scheduler
    correctly refused: `0/1 nodes are available: 1 Insufficient memory`. The real image is
    5.76 GB and was never pushed to a registry, so the structural check ran on `busybox`
-   with the probes removed. **The container itself was therefore not exercised here** —
-   that is what the compose stack in the repo root is for, and it is verified end to end.
+   with the probes removed. **The container itself was therefore not exercised here.**
+   That is what the compose stack in the repo root is for, and it is verified end to end.
 
 ## The access-mode deadlock, because nothing tells you
 

@@ -2,7 +2,7 @@
 
 Bi-encoders (what the FAISS index holds) embed the query and the document independently,
 so the score is a dot product between two vectors that never saw each other. That is what
-makes the index possible — documents are embedded once, offline — and it is also its
+makes the index possible, documents are embedded once, offline, and it is also its
 ceiling: the model cannot condition its reading of the passage on the question.
 
 A cross-encoder runs query and passage through the network together and scores the pair
@@ -43,14 +43,14 @@ def _model(name: str):
 # bge-reranker-base has a 512-token window and the cross-encoder truncates the pair from the
 # end, so a passage longer than the budget is scored on its prefix alone. Measured on this
 # corpus that is not an edge case: 44% of query+passage pairs exceed 512 (passages p50 356
-# tokens, p95 922, max 974), and **24% of pooled multi-span gold spans sit past the cut** —
-# 14% for single-span. The reranker is not misjudging those passages, it is scoring text
+# tokens, p95 922, max 974), and **24% of pooled multi-span gold spans sit past the cut**,
+# against 14% for single-span. The reranker is not misjudging those passages, it is scoring text
 # that does not contain the answer.
 #
 # Windowing splits an over-long passage into overlapping spans and keeps the best score, so
 # a gold span anywhere in the passage can win. Overlap is half a window because a span
 # landing exactly on a boundary would otherwise be split across two windows and score poorly
-# in both — the failure the whole mechanism exists to remove.
+# in both, the failure the whole mechanism exists to remove.
 WINDOW_OVERLAP = 0.5
 
 
@@ -121,7 +121,7 @@ def rerank(query: str, hits: list[Hit], k: int, model_name: str) -> tuple[list[H
         return [], 0
 
     started = time.monotonic()
-    # Single batched call — one forward pass over all pairs is several times faster than
+    # Single batched call: one forward pass over all pairs is several times faster than
     # looping, and the candidate list is small enough to fit in one batch comfortably.
     scores = _model(model_name).predict(
         [(query, hit.text) for hit in hits],
@@ -140,7 +140,7 @@ def rerank_per_query(pools: list[list[Hit]], queries: list[str], k: int,
     The single stage that loses the most evidence on multi-document questions. Reranking
     the merged pool against the *original* question asks the cross-encoder which passages
     best answer a string naming two facts, and the honest answer is the passages vaguely
-    about both — never the one that decisively answers half of it. Measured on the 67
+    about both, never the one that decisively answers half of it. Measured on the 67
     multi-span questions: 33% of gold spans sat in the candidate pool and were dropped
     here, against 37% that never reached the pool at all.
 

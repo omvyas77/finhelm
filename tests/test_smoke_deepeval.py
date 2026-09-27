@@ -2,7 +2,7 @@
 
 This is deliberately not a miniature version of `run_eval.py`. The full eval answers 75
 questions and reports numbers for a human to interpret; this asks a narrower question
-that a machine can answer without judgement — *did this change break the pipeline?* — on
+that a machine can answer without judgement, *did this change break the pipeline?*, on
 a slice small enough to run on every pull request.
 
 **Which metric applies to which question type is the whole design here.**
@@ -12,7 +12,7 @@ by the retrieved context (faithfulness) and the context must be relevant to the 
 (contextual relevancy).
 
 For the two negatives, both of those metrics are undefined. The correct answer to "what
-was Jamie Dimon's 2023 total compensation" — which is in the proxy, not in our corpus —
+was Jamie Dimon's 2023 total compensation", which is in the proxy, not in our corpus -
 is a refusal, and a refusal makes no claims that could be faithful or unfaithful to
 anything. Sending it to FaithfulnessMetric scores noise. So the negatives assert the
 thing that actually matters for them: that the system abstained instead of inventing a
@@ -34,7 +34,7 @@ import os
 # (207s by default) and this suite cannot finish one inside that, for a reason that is
 # pure arithmetic rather than bad luck.
 #
-# judge.py paces the judge at 12 RPM to stay inside the Gemini free tier — one call every
+# judge.py paces the judge at 12 RPM to stay inside the Gemini free tier: one call every
 # five seconds, globally, because the quota is per project per model. The served config
 # hands the generator 16 passages, and a faithfulness check scores claims against every
 # one of them, so a single test case needs well over forty paced calls: past 200 seconds
@@ -46,7 +46,7 @@ import os
 #
 # Set to a day, which is "no limit" in every sense that matters here, because the setting
 # cannot actually be switched off. DeepEval types it as Optional[float] with gt=0, and its
-# default of None means *no override* — so leaving it unset restores the 207s that caused
+# default of None means *no override*, so leaving it unset restores the 207s that caused
 # the cancellations. "None" and "" are both rejected by pydantic before any test runs.
 #
 # The first version of this line set the string "None" and was never executed locally
@@ -63,7 +63,7 @@ from pathlib import Path
 import pytest
 
 # Module scope, because RELEVANCY_THRESHOLD below is derived from it. This is the
-# served config — the same object the service answers requests with — which is what
+# served config, the same object the service answers requests with, which is what
 # keeps the gate scoring the system that ships.
 from finhelm.api import CONFIG  # noqa: E402
 
@@ -78,7 +78,7 @@ SLICE = {"single_hop": 4, "multi_hop": 3, "temporal": 3, "unanswerable": 1, "out
 
 # Calibrated against measured baseline rather than aspiration. A gate pinned above what
 # the system currently does is red on every PR, and a permanently red gate gets ignored
-# within a week — which is strictly worse than no gate, because it also hides the real
+# within a week, which is strictly worse than no gate, because it also hides the real
 # regression when one arrives. Raise both as the pipeline improves.
 FAITHFULNESS_THRESHOLD = 0.65
 
@@ -87,18 +87,18 @@ FAITHFULNESS_THRESHOLD = 0.65
 # sizes. The metric scores the fraction of supplied context that bears on the question;
 # we supply 8 chunks and a typical question is answered by one of them, which caps the
 # achievable score near 1/8 = 0.125 no matter how good retrieval is. Observed failures
-# sat at 0.125, 0.12 and 0.16 — at or above that ceiling, i.e. retrieval doing as well as
+# sat at 0.125, 0.12 and 0.16, at or above that ceiling, i.e. retrieval doing as well as
 # the metric permits while the threshold called it a failure.
 #
 # So this number is only meaningful alongside top_k_context=8, and comparing it against a
 # run with a different context size would be comparing two different metrics. It is set
 # to catch "almost nothing relevant came back", not to grade precision.
 # Derived from the served context size rather than hardcoded, because the whole point of
-# the paragraph above is that this number is not portable across context sizes — and it
+# the paragraph above is that this number is not portable across context sizes, and it
 # went stale exactly as predicted. 0.10 was calibrated when the service supplied 8 chunks.
 # The service now supplies 16, which halves the achievable ceiling to about 1/16 = 0.0625,
 # so the fixed threshold sat *above* what retrieval could reach and CI failed a question
-# scoring 0.087 — a score that is in fact better than one relevant chunk in sixteen.
+# scoring 0.087, a score that is in fact better than one relevant chunk in sixteen.
 #
 # 0.8/k keeps the same relationship to the ceiling that 0.10 had at k=8, and moves with
 # top_k_context so a future budget change cannot silently reintroduce the same failure.
@@ -124,7 +124,7 @@ def load_smoke_set() -> list[dict]:
 def judge_model():
     """Shared across tests so every judge call draws on one rate budget.
 
-    Constructing a model per test would give each its own limiter and defeat the pacing —
+    Constructing a model per test would give each its own limiter and defeat the pacing -
     see src/finhelm/judge.py for why the budget has to be process-global.
     """
     from finhelm import llm
@@ -147,7 +147,7 @@ def answers() -> dict[str, object]:
     # The *served* config, not a fresh Config().
     #
     # A bare Config() is chunking=fixed, retriever=dense, no reranking, bge-small and
-    # top_k_context=8 — none of which this project ships. The service is pinned to
+    # top_k_context=8, none of which this project ships. The service is pinned to
     # semantic + hybrid + rerank + contextual headers + bge-base at k=16, and for the life
     # of this file the PR quality gate was scoring a system nobody runs. It surfaced only
     # in CI, where the fixture has no `filings_fixed` index and FAISS said so; on a
@@ -159,14 +159,14 @@ def answers() -> dict[str, object]:
 # Twelve tests share two module-scoped fixtures, so an absent key produced twelve
 # identical FAILED-fixture tracebacks with the real cause buried in each. This states it
 # once. It is a skip rather than a failure because forked pull requests do not receive
-# secrets by design — but the workflow asserts the secrets exist for same-repo PRs, so an
+# secrets by design, but the workflow asserts the secrets exist for same-repo PRs, so an
 # unset key on a branch that should have one still fails, just not here.
 def _absent(name: str) -> bool:
     """Resolve a key the way the application does, not just from os.environ.
 
     llm.env() falls back to .env, so a developer machine has keys that os.getenv alone
     cannot see. Checking only the environment would skip the entire judged suite locally
-    while reporting nothing — the precise failure this guard exists to prevent.
+    while reporting nothing, the precise failure this guard exists to prevent.
     """
     from finhelm import llm
 
@@ -204,7 +204,7 @@ def test_answer_is_grounded(question, answers):
 
     result = answers[question["id"]]
     if result.abstained:
-        pytest.skip("abstained — counted by test_abstention_within_budget")
+        pytest.skip("abstained, counted by test_abstention_within_budget")
 
     contexts = [h.metadata.get("text", "") for h in result.retrieved]
     model = judge_model()
@@ -215,8 +215,8 @@ def test_answer_is_grounded(question, answers):
         # async_mode=False on purpose. DeepEval defaults to firing a metric's sub-calls
         # concurrently; each metric here fans out into claim extraction plus one verdict
         # call per claim, so twelve parametrised tests burst well past the judge's rate
-        # limit. The symptom was maddening: every test passed in isolation and half of
-        # them failed together, which reads like flaky quality rather than throttling.
+        # limit. The symptom is misleading: every test passes in isolation and half of
+        # them fail together, which reads like flaky quality rather than throttling.
         [FaithfulnessMetric(threshold=FAITHFULNESS_THRESHOLD, model=model,
                             async_mode=False),
          ContextualRelevancyMetric(threshold=RELEVANCY_THRESHOLD, model=model,

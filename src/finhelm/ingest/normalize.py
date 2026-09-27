@@ -38,8 +38,8 @@ def _fingerprint(text: str) -> str:
 
     Deliberately NOT a prefix hash. Hashing the first 500 characters looks like a
     cheap way to catch 8-K boilerplate, but SEC sections open with identical
-    stock language every year — "The following discussion sets forth the material
-    risk factors..." — so a prefix hash silently collapses three years of Risk
+    stock language every year, "The following discussion sets forth the material
+    risk factors...", so a prefix hash silently collapses three years of Risk
     Factors into one and destroys every temporal comparison in the golden set.
     Only exact duplicates are safe to drop automatically.
     """
@@ -57,7 +57,7 @@ def load_raw() -> list[dict]:
     for name in SOURCES:
         path = RAW_DIR / name
         if not path.exists():
-            print(f"  missing {name} — skipped")
+            print(f"  missing {name}, skipped")
             continue
         with path.open(encoding="utf-8") as fh:
             n = 0
@@ -119,7 +119,7 @@ def main() -> None:
     shared = sum(v - 1 for v in near_dupe_prefixes.values() if v > 1)
     print(
         f"\nkept records sharing a {DEDUPE_PREFIX}-char opening: {shared} "
-        "(retained on purpose — mostly year-over-year SEC boilerplate)"
+        "(retained on purpose, mostly year-over-year SEC boilerplate)"
     )
 
 

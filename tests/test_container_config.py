@@ -1,8 +1,8 @@
 """The Dockerfile and compose file have to agree with the code, and nothing else checks it.
 
 Every failure here is one this project already made once. The DSN was named three
-different things in three files — `POSTGRES_DSN` in .env, `PGVECTOR_DSN` in compose,
-`FINHELM_PG_DSN` in the code — and the result was not an error but a container quietly
+different things in three files, `POSTGRES_DSN` in .env, `PGVECTOR_DSN` in compose,
+`FINHELM_PG_DSN` in the code, and the result was not an error but a container quietly
 connecting to itself on localhost. The image bakes model weights and then runs with
 HF_HUB_OFFLINE=1, so pointing the served config at a model the image did not bake turns
 into a hang on the first request rather than a build failure.
@@ -136,8 +136,8 @@ def test_otel_endpoint_uses_the_grpc_port():
 
 def test_each_pipeline_service_gets_its_own_otel_service_name():
     """Three compose services run the same image, so the service name is the only thing
-    separating their spans in Jaeger. It was set here and read nowhere — telemetry.setup()
-    hardcoded "finhelm" — so api and ui traces landed under one name for weeks."""
+    separating their spans in Jaeger. It was set here and read nowhere, telemetry.setup()
+    hardcoded "finhelm", so api and ui traces landed under one name for weeks."""
     names = {s: COMPOSE["services"][s]["environment"].get("OTEL_SERVICE_NAME")
              for s in PIPELINE_SERVICES}
     assert all(names.values()), f"a pipeline service has no OTEL_SERVICE_NAME: {names}"
@@ -182,8 +182,8 @@ def test_mlflow_allows_the_host_it_is_published_on():
 def test_the_judged_gate_scores_the_served_config():
     """The rule this file exists to enforce, applied to the quality gate.
 
-    tests/test_smoke_deepeval.py built its answers with a bare `Config()` — fixed, dense,
-    no reranking, bge-small, k=8 — for the life of the file. The service is pinned to
+    tests/test_smoke_deepeval.py built its answers with a bare `Config()`, fixed, dense,
+    no reranking, bge-small, k=8, for the life of the file. The service is pinned to
     semantic + hybrid + rerank + contextual + bge-base at k=16, so every quality gate this
     project passed was gating a configuration it never ran.
 
@@ -222,7 +222,7 @@ def test_the_ci_fixture_covers_every_smoke_question():
     for the questions that gate asks.
 
     It did not. The fixture was built from a stratified 40-question subset and the smoke
-    suite uses a different 12, of which only 5 overlapped — so 7 questions had their gold
+    suite uses a different 12, of which only 5 overlapped, so 7 questions had their gold
     spans excluded from the corpus by construction. The gate then failed 8 of 13 in CI
     against 4 of 13 locally, and the difference was not answer quality: the system was
     being asked about evidence that had been deliberately removed. A faithfulness score
@@ -264,15 +264,15 @@ def test_the_committed_fixture_index_matches_the_committed_chunks():
         n_indexed = sum(1 for line in meta.read_text().splitlines() if line.strip())
         assert n_indexed == len(chunks), (
             f"{index_dir} holds {n_indexed} vectors but {parquet} has {len(chunks)} "
-            f"chunks — the committed index is stale")
+            f"chunks, the committed index is stale")
 
 
 def test_the_judged_suite_configures_deepeval_with_a_value_deepeval_accepts():
     """Importing the judged suite must not raise, and its settings must validate.
 
     The suite disables DeepEval's per-attempt timeout at module top. The first version set
-    the string "None" — which pydantic rejects, because the field is Optional[float] with
-    gt=0 — and it was never run locally before being pushed, since the local run that
+    the string "None", which pydantic rejects, because the field is Optional[float] with
+    gt=0, and it was never run locally before being pushed, since the local run that
     motivated the line predates the line. CI failed 11 of 13 with a ValidationError naming
     the setting.
 
@@ -307,7 +307,7 @@ def test_the_relevancy_threshold_is_reachable_at_the_served_context_size():
     question, so it is diluted by top_k_context: with roughly one relevant chunk among k,
     the achievable score is about 1/k. The threshold was a fixed 0.10, calibrated when the
     service supplied 8 chunks (ceiling ~0.125). The service now supplies 16, ceiling
-    ~0.0625 — so the fixed threshold sat *above* anything retrieval could reach, and CI
+    ~0.0625, so the fixed threshold sat *above* anything retrieval could reach, and CI
     failed a question scoring 0.087, which is better than one relevant chunk in sixteen.
 
     A gate that always fails is as useless as one that always passes, and worse than
@@ -380,14 +380,14 @@ def test_the_demo_import_path_does_not_require_a_web_framework():
     """The Space installs a serving-only dependency set and has no FastAPI.
 
     app.py read the served config from finhelm.api, which imports FastAPI, so the deployed
-    demo died on `ModuleNotFoundError: No module named 'fastapi'` at the first question —
+    demo died on `ModuleNotFoundError: No module named 'fastapi'` at the first question -
     importing a web framework to read a constant. The config now lives in config.py and
     api.CONFIG re-exports it.
 
     Simulated rather than trusted: the import is attempted with fastapi, uvicorn,
     starlette and nltk blocked at the meta-path, which is what the Space actually
     looks like. nltk is in the list because sentence splitting is an indexing concern
-    and the serving path must not need it — a module-level import of it in
+    and the serving path must not need it, a module-level import of it in
     chunking/__init__.py was the second thing to break the deployed demo. A
     plain import here would pass on any machine that happens to have FastAPI installed,
     which is every developer machine and none of the deployments.

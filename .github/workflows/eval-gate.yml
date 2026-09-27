@@ -9,7 +9,7 @@ name: eval-gate
 # It does run one. It just cannot run it on every push: on a 2-vCPU runner the 40-question
 # fixture eval takes 49 s per question and projects to 33 minutes, which is not a tier
 # anyone leaves switched on. So the eval moved to pull requests and the every-push tier is
-# what it can honestly be — unit tests, including the tests that cover the gate logic
+# what it can honestly be, unit tests, including the tests that cover the gate logic
 # itself, in about three minutes.
 #
 # What is lost is stated rather than glossed: a push straight to a branch with no PR gets
@@ -43,7 +43,7 @@ env:
   # vCPUs at 49 s/question, and the 40-question gate projected to 33 minutes.
   #
   # 2 matches the runner. If this ever does segfault on Linux, drop it to 1 and accept the
-  # runtime — a loud crash is the signal, and it is not a silent one.
+  # runtime, a loud crash is the signal, and it is not a silent one.
   OMP_NUM_THREADS: "2"
 
 jobs:
@@ -63,7 +63,7 @@ jobs:
       # torch from the CPU index, exactly as the Dockerfile does it and for exactly the
       # same reason: ubuntu-latest is amd64, where the PyPI wheel bundles the CUDA runtime
       # and drags in ~2.5 GB of nvidia-* that this job can never use. --no-deps is what
-      # makes the CPU index usable at all — --index-url replaces PyPI rather than adding
+      # makes the CPU index usable at all, --index-url replaces PyPI rather than adding
       # to it, so torch's ordinary Python dependencies have nowhere to resolve from.
       # requirements.txt supplies them in the next step.
       - name: Install torch (CPU build)
@@ -87,7 +87,7 @@ jobs:
           python -c "import torch; print('torch', torch.__version__)"
 
       # -rs prints the reason for every skip. Two tests skip themselves when the real
-      # index is absent, which is always true on a runner — without -rs the run is green
+      # index is absent, which is always true on a runner, without -rs the run is green
       # and silent about the fact that it never touched FAISS.
       - name: Unit tests
         run: pytest tests/ -q -rs -m "not slow"
@@ -136,7 +136,7 @@ jobs:
       # Keyed on the fixture itself, so regenerating data/ci invalidates the index rather
       # than silently evaluating new questions against an old corpus.
       # No index build step, and that is deliberate. Embedding the fixture measured at
-      # 2 chunks/s on CPU — 1,131 filings chunks took 581 s — so building it here would
+      # 2 chunks/s on CPU, 1,131 filings chunks took 581 s, so building it here would
       # cost ~16 minutes on a runner with fewer cores than the machine that measured it.
       # Caching only moves that cost to whenever the cache is evicted or the fixture is
       # regenerated. The index is 9.3 MB, so it is committed instead: data/ci is laid out
@@ -166,11 +166,11 @@ jobs:
       # that gate cannot sit green forever.
       #
       # The floor is calibrated against the fixture corpus and means nothing against the
-      # real one — ~1,900 chunks is a far easier retrieval problem than 24,650, so this
+      # real one, ~1,900 chunks is a far easier retrieval problem than 24,650, so this
       # number reads higher than the headline 0.7377. It is a tripwire for "the diff moved
       # retrieval", not a quality measure.
       # No --agentic: --deterministic-only forces it off, because agent.decompose calls
-      # the model and swallows every exception, so a keyless run would not fail — it would
+      # the model and swallows every exception, so a keyless run would not fail, it would
       # quietly stop splitting multi-hop questions and report a number that looks real.
       # This tier therefore does not cover decomposition; the judged tier does.
       - name: Deterministic eval gate
@@ -191,7 +191,7 @@ jobs:
         # 1,889 chunks is a far easier problem than against 24,650; the full corpus scores
         # 0.7377. It is a tripwire for "the diff moved retrieval", nothing more.
 
-      # if: always() — a failing gate is exactly when the per-question detail is worth
+      # if: always(), a failing gate is exactly when the per-question detail is worth
       # having, and a run that only uploads its artifacts on success is useless twice.
       - name: Upload eval results
         if: always()
@@ -208,7 +208,7 @@ jobs:
     runs-on: ubuntu-latest
     # 60, and the number is a consequence of a bug fix rather than of slow hardware.
     #
-    # judge.py paces the judge at 12 RPM to stay inside the Gemini free tier — one call
+    # judge.py paces the judge at 12 RPM to stay inside the Gemini free tier: one call
     # every five seconds, globally, since the quota is per project per model.
     # ContextualRelevancyMetric judges every retrieved context, so the floor is
     # questions x k calls: 12 x 8 = 96 (~8 min) under the bare Config() this suite used
@@ -235,8 +235,8 @@ jobs:
     #   3. Fewer questions at full k. 6 x 16 costs what 12 x 8 did and preserves what the
     #      metric means. It weakens coverage, but plainly and statably.
     # If none are available, sample contexts at random rather than by citation: random
-    # sampling is a weaker version of the same measurement, cited-only is a different
-    # measurement wearing its clothes.
+    # sampling is a weaker version of the same measurement; cited-only measures
+    # something different.
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -255,11 +255,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # The generator and the judge must stay in different model families — same-family
+      # The generator and the judge must stay in different model families, same-family
       # judging produces self-preference bias, and Config.__post_init__ enforces it. Both
       # keys are needed or the suite cannot run at all.
       # The suite skips itself without keys, which is right for a forked PR and wrong for
-      # a branch in this repo — a silent skip there is a gate that stopped gating. This
+      # a branch in this repo, a silent skip there is a gate that stopped gating. This
       # makes the same-repo case loud.
       - name: Require judge credentials for same-repo pull requests
         if: github.event.pull_request.head.repo.full_name == github.repository

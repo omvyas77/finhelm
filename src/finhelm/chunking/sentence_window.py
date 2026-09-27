@@ -1,6 +1,6 @@
 """Sentence-window chunking: index one sentence, retrieve a window around it.
 
-Each sentence is embedded alone, which makes retrieval precise — the embedding is not
+Each sentence is embedded alone, which makes retrieval precise: the embedding is not
 diluted by neighbouring topics. At generation time the ±cfg.sentence_window neighbours
 are spliced back in so the model still sees coherent context.
 

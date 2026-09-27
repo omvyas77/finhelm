@@ -2,7 +2,7 @@
 # would put a gigabyte into every pull and rebuild it on every code change; building it in
 # an initContainer would cost 85 minutes per pod start. So it is a volume.
 #
-# ReadOnlyMany because every replica reads the same immutable index and none writes it —
+# ReadOnlyMany because every replica reads the same immutable index and none writes it -
 # which is also what lets the HPA scale past one pod. On GKE this wants Filestore, on EKS
 # an EFS volume; a block-device StorageClass cannot serve it.
 #

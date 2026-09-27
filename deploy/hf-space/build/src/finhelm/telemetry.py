@@ -8,8 +8,8 @@ chunks were retrieved and what it cost.
 
 Everything degrades to a no-op when no collector is configured. That is deliberate: the
 eval harness imports the same code paths as the service and runs thousands of times
-offline, and instrumentation that raised — or worse, blocked on a connection timeout to a
-Jaeger that is not there — would make tracing a liability rather than a tool.
+offline, and instrumentation that raised, or worse, blocked on a connection timeout to a
+Jaeger that is not there, would make tracing a liability rather than a tool.
 """
 
 from __future__ import annotations
@@ -30,8 +30,8 @@ def _reachable(endpoint: str, timeout: float = 0.25) -> bool:
     Without this, a configured-but-absent collector is worse than no configuration at all:
     the batch processor retries with exponential backoff on every export, so each run pays
     seconds of connection failures and prints a wall of transient errors. `.env` carries an
-    endpoint for compose, so every process that imports this module — including the eval
-    harness, thousands of times offline — would inherit that cost with no collector
+    endpoint for compose, so every process that imports this module, including the eval
+    harness, thousands of times offline, would inherit that cost with no collector
     running. One 250 ms probe at startup turns it back into a genuine no-op.
     """
     import socket
@@ -55,7 +55,7 @@ def resolve_service_name(explicit: str | None = None) -> str:
     """Explicit argument, then OTEL_SERVICE_NAME, then the default.
 
     A separate function because it is the part worth testing, and testing it through
-    setup() means standing up a TracerProvider and stubbing opentelemetry.sdk.resources —
+    setup() means standing up a TracerProvider and stubbing opentelemetry.sdk.resources -
     which breaks that package's own imports.
     """
     return explicit or os.getenv("OTEL_SERVICE_NAME") or DEFAULT_SERVICE_NAME
@@ -70,7 +70,7 @@ def setup(service_name: str | None = None) -> bool:
     The service name comes from OTEL_SERVICE_NAME for the same reason. Compose has been
     setting it per service since the stack was written and nothing read it: the name was
     hardcoded, so api and ui both registered as "finhelm" and their spans landed in one
-    undifferentiated pile in Jaeger — which is precisely what a service name is for when
+    undifferentiated pile in Jaeger, which is precisely what a service name is for when
     three containers run the same image.
 
     The protocol is chosen by port because the two OTLP ports are not interchangeable:
@@ -116,7 +116,7 @@ def span(name: str, **attributes: Any) -> Iterator[Any]:
     """A span, or nothing at all when tracing is off.
 
     Attributes are set individually rather than passed to start_as_current_span so that a
-    None — an unrouted collection, a missing token count — is skipped instead of raising
+    None, an unrouted collection, a missing token count, is skipped instead of raising
     inside the instrumentation.
     """
     try:

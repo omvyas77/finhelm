@@ -4,7 +4,7 @@
 
 Note on paragraph boundaries: the ingest `to_text` collapses all whitespace, so the
 corpus has no paragraph structure left to split on. Sentence boundaries are used
-instead. That is a deliberate tradeoff — retaining paragraphs would mean carrying
+instead. That is a deliberate tradeoff, retaining paragraphs would mean carrying
 markup-derived structure through every source, and SEC HTML is too inconsistent for
 that to be reliable.
 """
@@ -30,7 +30,7 @@ def chunks_name(collection: str, strategy: str,
     The size belongs in the name for the same reason the embedding model belongs in the
     index name: two parquets built at different sizes are not interchangeable, and without
     it `--chunk-tokens 400` overwrites the 800-token file that every existing index and
-    every measured result was built from. That failure is silent — the rebuild succeeds,
+    every measured result was built from. That failure is silent, the rebuild succeeds,
     and only the next eval reveals that BM25 and the FAISS index now disagree about what
     chunk_id means.
     """
@@ -77,7 +77,7 @@ def sentences(text: str) -> list[str]:
     # Imported here, not at module scope, because sentence splitting is an *indexing*
     # concern and this module is on the serving path only for chunks_name(). A top-level
     # import made every serving process carry nltk and its punkt corpus for a function it
-    # never calls — which is how the deployed Space died on ModuleNotFoundError after
+    # never calls, which is how the deployed Space died on ModuleNotFoundError after
     # being given a correctly minimal dependency set.
     from nltk.tokenize import sent_tokenize
 

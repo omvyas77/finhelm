@@ -3,7 +3,7 @@
 **This is a screening methodology, not a finding about any company.** Disparity screening
 flags cells that warrant investigation; it cannot establish that a company treated anyone
 unfairly, and nothing here should be read as saying so. The limitations are not a footnote
-to this module — they are most of what it is for, and they are stated in full in
+to this module: they are most of what it is for, and they are stated in full in
 analytics/METHODOLOGY.md.
 
 What it computes, for every (company, product) cell with enough complaints to support a
@@ -20,7 +20,7 @@ against a number it helped produce. With a large issuer that is a substantial sh
 baseline, and it biases every test toward finding nothing. Each cell is therefore compared
 against the same product at every *other* company.
 
-**Benjamini-Hochberg, not Bonferroni.** This is a screen — the cost of a false positive is
+**Benjamini-Hochberg, not Bonferroni.** This is a screen, the cost of a false positive is
 an analyst's afternoon, and the cost of a false negative is missing the thing the screen
 exists to find. Controlling the false discovery rate is the right trade at this stage;
 controlling the family-wise error rate at several hundred tests would leave the screen
@@ -60,7 +60,7 @@ MIN_CELL = 50
 
 RELIEF = {"Closed with monetary relief", "Closed with non-monetary relief"}
 # "In progress" is neither an outcome nor a non-outcome yet, so it is excluded from the
-# denominator rather than counted as "no relief" — counting it would understate relief for
+# denominator rather than counted as "no relief", counting it would understate relief for
 # whichever company happens to have open cases on the extract date.
 UNRESOLVED = {"In progress"}
 
@@ -131,7 +131,7 @@ def adjust(screened: pd.DataFrame, alpha: float = 0.05) -> pd.DataFrame:
     """Benjamini-Hochberg across the whole family of tests.
 
     Applied once, over every cell tested, because the family is "every comparison this
-    screen ran" — correcting within each product separately would understate the number of
+    screen ran", correcting within each product separately would understate the number of
     chances taken and let a cell clear a bar it should not.
     """
     from statsmodels.stats.multitest import multipletests
@@ -152,7 +152,7 @@ def report(df: pd.DataFrame, outcome: str, alpha: float, min_cell: int) -> pd.Da
     flagged = int(screened["flagged"].sum()) if total else 0
     raw = int((screened["p_value"] < alpha).sum()) if total else 0
 
-    print(f"\n{outcome} rate — {total} cells tested (>= {min_cell} complaints each)")
+    print(f"\n{outcome} rate, {total} cells tested (>= {min_cell} complaints each)")
     print(f"  overall {outcome} rate: {df[outcome].mean():.4f} over {len(df):,} complaints")
     print(f"  significant before correction: {raw}")
     print(f"  flagged after Benjamini-Hochberg at alpha={alpha}: {flagged}")
@@ -173,7 +173,7 @@ def report(df: pd.DataFrame, outcome: str, alpha: float, min_cell: int) -> pd.Da
         if share > 0.25:
             print(f"  WARNING: {share:.0%} is too high to read as anomaly detection. The "
                   f"effects are\n           large rather than marginal, so this is "
-                  f"heterogeneity between companies,\n           not a power artifact — "
+                  f"heterogeneity between companies,\n           not a power artifact, "
                   f"the product baseline is mixing peer groups that\n           do not "
                   f"belong together. See METHODOLOGY.md, 'Why the peer group is wrong'.")
 
@@ -202,7 +202,7 @@ def main() -> None:
 
     print("\nThis is a screening methodology, not a finding about any company.")
     print("A flagged cell warrants investigation; it does not establish unfair treatment.")
-    print("See analytics/METHODOLOGY.md — the limitations are the substance here.")
+    print("See analytics/METHODOLOGY.md, the limitations are the substance here.")
 
     if args.out and not screened.empty:
         screened.to_csv(args.out, index=False)

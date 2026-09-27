@@ -4,11 +4,9 @@ No metric in this repository is edited by hand, and a rule that lives only in a 
 is one nobody can enforce. This asserts it: each value in the README and the results table
 is parsed back out and compared against the frozen run it claims to come from.
 
-It is the same standing rule this repository keeps rediscovering — anything that describes
-the system must be pinned to the artifact the system actually produced, and the pinning
-has to be checked somewhere a good intention cannot paper over it. A README is the most
-likely place for a number to drift, because updating prose is easy and re-running an
-evaluation is not.
+Anything that describes the system has to be pinned to the artifact the system produced,
+and the pinning has to be checked somewhere. A README is the most likely place for a
+number to drift, because updating prose is easy and re-running an evaluation is not.
 """
 
 from __future__ import annotations
@@ -48,7 +46,7 @@ def _final_run() -> dict:
 
 
 def _final_records() -> list[dict]:
-    """The records of the run history says is final — resolved by name, never by glob.
+    """The records of the run history says is final, resolved by name, never by glob.
 
     `sorted(glob("*-final.json"))[-1]` looks like "the newest final run" and is actually
     alphabetical order. Two files match that pattern here and the older one
@@ -66,7 +64,7 @@ def _final_records() -> list[dict]:
 
 def _results_table() -> str:
     """The full table now lives in docs/METHOD.md; the README carries a four-number
-    summary for someone skimming. Both are checked — a figure a reader meets first is the
+    summary for someone skimming. Both are checked, a figure a reader meets first is the
     one most worth pinning to the run that produced it."""
     text = METHOD.read_text()
     start = text.index("| Metric | Value")
@@ -163,8 +161,8 @@ def test_blog_post_figures_come_from_the_frozen_run(literal, key):
 
 
 def test_blog_post_counts_match_the_records():
-    """The post's central claim — that retrieval failures become confident answers 60% of
-    the time — is a count over the run's records, not a logged metric. Recomputed here so
+    """The post's central claim, that retrieval failures become confident answers 60% of
+    the time, is a count over the run's records, not a logged metric. Recomputed here so
     prose cannot drift from the data it describes."""
     import json
 

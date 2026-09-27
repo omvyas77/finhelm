@@ -8,8 +8,8 @@ retrieval changes.
 --------------------------------------------------------------------------------------
 Why the categories are assigned in a fixed order
 --------------------------------------------------------------------------------------
-The five failure categories overlap in practice — a question can be routed to the wrong
-collection *and* retrieve nothing *and* then refuse — so counting them independently
+The five failure categories overlap in practice, a question can be routed to the wrong
+collection *and* retrieve nothing *and* then refuse, so counting them independently
 produces a table whose column sums exceed the number of failures and which cannot be used
 to decide what to fix. Each failure is therefore charged to its *earliest* cause in the
 pipeline, since fixing an upstream cause can dissolve everything downstream of it:
@@ -114,7 +114,7 @@ def main() -> None:
     positives = [r for r in records if r["type"] not in NEGATIVE_TYPES]
     negatives = [r for r in records if r["type"] in NEGATIVE_TYPES]
     if not any((r.get("answer") or "").strip() for r in positives):
-        sys.exit("this is a retrieve-only run — no answers to classify")
+        sys.exit("this is a retrieve-only run, no answers to classify")
 
     charged = Counter()
     by_type: dict[str, Counter] = {}
@@ -144,7 +144,7 @@ def main() -> None:
     print(f"  abstained                        {sum(refused(r) for r in positives):>3}")
 
     # The abstention policy's real error rate. Refusing when retrieval returned nothing is
-    # not an over-refusal — it is the system declining to invent an answer, which is the
+    # not an over-refusal: it is the system declining to invent an answer, which is the
     # behaviour the golden set's negatives exist to reward. Only a refusal made while
     # holding the evidence is a policy failure, and separating the two is what stops anyone
     # from tuning the threshold when the actual problem is recall.

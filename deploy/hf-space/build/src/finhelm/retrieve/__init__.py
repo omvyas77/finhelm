@@ -1,6 +1,6 @@
 """The one retrieval entry point the generator and the eval harness both call.
 
-Everything the earlier ablation varies — chunking strategy, retriever, reranking, routing —
+Everything the earlier ablation varies (chunking strategy, retriever, reranking, routing)
 is a field on Config, so the ablation loop is `for cfg in variants: retrieve(q, cfg)`
 rather than a different code path per row of the results table.
 """
@@ -31,7 +31,7 @@ class Retrieved:
     # it rather than to the one the user typed.
     sub_questions: list[str] = field(default_factory=list)
     # The full candidate pool as it stood before reranking and before truncation to
-    # top_k_context — i.e. what retrieval actually found, as opposed to what survived
+    # top_k_context, i.e. what retrieval actually found, as opposed to what survived
     # selection. Carried because the two failure modes underneath a recall miss want
     # opposite fixes and are indistinguishable from `hits` alone: a gold document that
     # reached the pool and was then dropped is a fusion/rerank problem, while one that
@@ -57,8 +57,8 @@ def _available(collection: str, strategy: str, retriever: str,
     BM25 builds from the chunk parquet at load time, while dense needs a prebuilt FAISS
     index. `filings_sentence_window` spent most of the ablation with a parquet and no
     index, which made `--retriever bm25 --chunking sentence_window` a real, runnable cell
-    while the dense arm of the same row was not. Asking the narrower question — what does
-    *this* retriever need — kept that cell available instead of falling back on it
+    while the dense arm of the same row was not. Asking the narrower question, what does
+    *this* retriever need, kept that cell available instead of falling back on it
     needlessly. (The index exists now, but the asymmetry is a property of the artifacts,
     not of that one gap: `complaints` still has no index under any strategy but `fixed`.)
 
@@ -83,7 +83,7 @@ def _resolve_strategy(collection: str, strategy: str, retriever: str,
 
     Only `filings` was chunked under all three strategies; `complaints` exists as `fixed`
     only. Without this, any question the router sends to complaints crashes the moment
-    the sweep moves off `fixed` — which is how the first sweep attempt died.
+    the sweep moves off `fixed`, which is how the first sweep attempt died.
 
     Falling back is the right behaviour rather than erroring, because the chunking
     ablation is a question about filings prose: complaint narratives are a few hundred
@@ -147,8 +147,8 @@ def _from_collection(query: str, collection: str, cfg: Config, filters: dict | N
     if not filters or len(hits) >= k:
         return hits
 
-    # Backoff. A filter derived from the question can be wrong — an amendment, an exhibit,
-    # a fact carried in an 8-K rather than the 10-K the question names — and a filter that
+    # Backoff. A filter derived from the question can be wrong, an amendment, an exhibit,
+    # a fact carried in an 8-K rather than the 10-K the question names, and a filter that
     # empties the pool costs recall that no later stage can recover. Refilling from the
     # unfiltered ranking keeps the filtered hits in front and spends only the slots the
     # filter could not fill, so a good filter loses nothing and a bad one degrades to the
@@ -178,8 +178,8 @@ def _from_collection(query: str, collection: str, cfg: Config, filters: dict | N
 # 0.435 (paired, n=54, [-0.139, +0.009]).
 #
 # The single-span damage is the more useful half of the result. decompose splits 53 of 54
-# questions, so quota-splitting also dilutes questions that only ever needed one fact —
-# any future attempt at this has to gate on the split being warranted, not merely present.
+# questions, so quota-splitting also dilutes questions that only ever needed one fact.
+# Any future attempt at this has to gate on the split being warranted, not merely present.
 
 def retrieve(
     query: str,
@@ -239,7 +239,7 @@ def retrieve(
         # in the waterfall, which is where "this half retrieved nothing" becomes visible
         # rather than inferable.
         #
-        # index 0 is always the original question — it is retrieved for alongside the
+        # index 0 is always the original question: it is retrieved for alongside the
         # split so that a decomposition which drops a facet costs ranking, not evidence.
         with span("subquery", **{"subquery.index": index,
                                  "subquery.is_original": index == 0,
@@ -260,8 +260,8 @@ def retrieve(
                 merged = {**(filters or {}), **(implied or {})} or None
                 per_collection.append(_from_collection(q, c, cfg, merged))
             # Fusing a single list would only overwrite each score with 1/(rrf_k + rank),
-            # throwing away the cosine or BM25 value for no gain. Keep the real scores —
-            # they are what tells a confident hit from a barely-above-noise one.
+            # throwing away the cosine or BM25 value for no gain. Keep the real scores:
+            # they are what separates a confident hit from a barely-above-noise one.
             # Across collections it is the opposite: `filings` and `complaints` are separate
             # indexes whose scores are not on a comparable scale, so rank fusion is the only
             # defensible way to interleave them.
@@ -277,7 +277,7 @@ def retrieve(
             pools.append(pool)
 
     # Candidates are assembled at full width first. When reranking is on, the cross-encoder
-    # needs the whole pool to work with — truncating to top_k_context before reranking
+    # needs the whole pool to work with, truncating to top_k_context before reranking
     # would hand it the bi-encoder's answer and ask it to confirm that, which is exactly
     # the mistake reranking exists to correct.
     if len(pools) == 1:
@@ -292,7 +292,7 @@ def retrieve(
 
     # Sentence-window hits carry only the indexed sentence until here; window.expand
     # splices their neighbours back in. It runs last, on the selected hits only, so both
-    # scorers above still see the bare sentence — see window.py.
+    # scorers above still see the bare sentence, see window.py.
     # Two rerank shapes, because which question a candidate is scored against decides what
     # survives. The default scores everything against the original question, which is right
     # for a single-fact query and wrong for a comparison: asked which passages best answer a

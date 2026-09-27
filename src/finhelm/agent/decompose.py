@@ -1,6 +1,6 @@
 """Split a multi-hop question into independently retrievable sub-questions.
 
-A comparison — "how does JPMorgan's CET1 ratio compare with Citigroup's?" — is a single
+A comparison such as "how does JPMorgan's CET1 ratio compare with Citigroup's?" is a single
 string that names two facts living in two different filings. Embedded as one vector it
 lands somewhere between them and retrieves neither side cleanly. That is not a ranking
 problem a reranker can repair: the query itself is the wrong shape.
@@ -12,7 +12,7 @@ Two design constraints, both learned from the failures this project already logg
 
   * Decomposition is *additive*. Sub-question hits are fused with hits for the original
     question rather than replacing them, because a decomposition that drops a facet is
-    otherwise unrecoverable — and an LLM splitting a question is exactly the step most
+    otherwise unrecoverable, and an LLM splitting a question is exactly the step most
     likely to drop one. Fusion means a bad split costs ranking, not evidence.
   * It fails open. Any error, timeout, or unparseable reply returns the original question
     unchanged. A retrieval pipeline that stops answering because a helper model returned
@@ -43,7 +43,7 @@ Reply with JSON only: {"sub_questions": ["...", "..."]}"""
 
 # A deterministic pre-check, run before the model is asked to split anything.
 #
-# Left ungated, decompose splits 53 of 54 golden-set questions — including ones asking for
+# Left ungated, decompose splits 53 of 54 golden-set questions, including ones asking for
 # a single fact from a single filing, which it "splits" into near-paraphrases. That costs a
 # model call, ~2.9x retrieval latency and ~7x cost per query to help the roughly one
 # question in five that genuinely spans two documents. Worse, the split is not free
@@ -103,7 +103,7 @@ _YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
 # "its 2024 10-K", "the 10-Q filed in 2025". Only an explicitly named form counts; a bare
 # year is not enough, because a question may mention a period without naming the document.
 _FORM_NAMED = re.compile(r"\b(10-?K|10-?Q|8-?K)\b", re.I)
-# "its 2024 10-K", "the 10-Q filed in 2025" — a year bound to a named form, in either order.
+# "its 2024 10-K", "the 10-Q filed in 2025", a year bound to a named form, in either order.
 _FILING_NAMED = re.compile(
     r"(\b(?:19|20)\d{2})\s+(10-?K|10-?Q|8-?K)"
     r"|(10-?K|10-?Q|8-?K)[^.]{0,40}?\b((?:19|20)\d{2})", re.I)
@@ -130,8 +130,8 @@ def worth_splitting(question: str) -> bool:
     """Does this question look like it spans more than one document?"""
     # Imported here rather than at module scope to break a cycle: retrieve/__init__ imports
     # decompose, so decompose cannot import from the retrieve package at import time. The
-    # comparative pattern belongs to the router — it is the same question ("does this need
-    # both sides?") asked of collections rather than of documents — and duplicating it
+    # comparative pattern belongs to the router: it is the same question ("does this need
+    # both sides?") asked of collections rather than of documents, and duplicating it
     # would let the two definitions drift apart, which is worse than a deferred import.
     from ..retrieve.router import _COMPARATIVE
 
@@ -210,13 +210,13 @@ def filters_for(question: str) -> dict | None:
 
     * Exactly one issuer, or no filter. Zero means nothing to filter on; two or more means
       the question spans both, and filtering to either one guarantees missing the other
-      half — which is the failure this is meant to fix, not cause. The original compound
+      half, which is the failure this is meant to fix, not cause. The original compound
       question therefore filters to nothing by construction, which is correct: it is the
       sub-questions that are single-issuer.
 
     * No date filter, despite `date` being indexed and every sub-question naming a period.
-      Filings routinely report prior-period figures — a 2023 number is usually stated in
-      the 2024 10-K as the comparative column — so filtering to the year a question asks
+      Filings routinely report prior-period figures, a 2023 number is usually stated in
+      the 2024 10-K as the comparative column, so filtering to the year a question asks
       about would exclude the document that actually answers it. The gold spans confirm
       this: several questions about one year are answered by a filing dated the next.
     """
@@ -227,14 +227,14 @@ def filters_for(question: str) -> dict | None:
         filters["ticker"] = issuers.pop()
 
     # Form, when the question names one. 37% of golden-set questions do, and the gold span
-    # is of that form 95% of the time, while 42% of context slots go to a different form —
-    # so this is mostly reclaiming slots the answer was never going to be in.
+    # is of that form 95% of the time, while 42% of context slots go to a different form,
+    # so this mostly reclaims slots the answer was never going to be in.
     forms = {f.upper().replace("-", "") for f in _FORM_NAMED.findall(question)}
     if len(forms) == 1:
         canonical = {"10K": "10-K", "10Q": "10-Q", "8K": "8-K"}[forms.pop()]
         filters["form"] = canonical
 
-    # Filing year, when the question names exactly one filing — the same "exactly one" rule
+    # Filing year, when the question names exactly one filing, the same "exactly one" rule
     # the issuer filter uses, and for the same reason: a comparison naming two filings
     # cannot be filtered to either without guaranteeing the other half is missed.
     #
@@ -242,7 +242,7 @@ def filters_for(question: str) -> dict | None:
     # filed in early 2025; the named year and the filing year differ 52% of the time and
     # every difference is +1.
     #
-    # Measured per sub-question — which is where this runs — the window covers 99% of gold
+    # Measured per sub-question, which is where this runs, the window covers 99% of gold
     # spans and form-plus-window covers 98%. Measured on the *compound* question it covers
     # only 75%, and that number is an artifact: a temporal question names two filings, the
     # regex takes the first, and gold spans belonging to the second are scored as +2 and +3
@@ -257,7 +257,7 @@ def filters_for(question: str) -> dict | None:
     # and in the metadata. "Its 2024 10-K" is the 10-K *for* fiscal 2024, which is filed in
     # 2025: measured on the golden set, the named year differs from the filing year 52% of
     # the time. Widening to {YYYY, YYYY+1} still only covers 75% of gold spans, and a
-    # filter that discards a quarter of the answers is worse than no filter — the recall it
+    # filter that discards a quarter of the answers is worse than no filter, the recall it
     # costs is unrecoverable, while the precision it buys is not.
     #
     # This is why temporal questions remain unfixed: 88% of their gold spans are boilerplate

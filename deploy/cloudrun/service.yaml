@@ -16,7 +16,7 @@ spec:
   template:
     metadata:
       annotations:
-        # Scale to zero. The free tier is the point, and this is a demo — but see the
+        # Scale to zero. The free tier is the point, and this is a demo, but see the
         # cold-start note in README.md, because zero is not free of consequence: a cold
         # request pays image pull plus ~20 s of model load.
         autoscaling.knative.dev/minScale: "0"
@@ -27,7 +27,7 @@ spec:
         run.googleapis.com/execution-environment: gen2
     spec:
       # One request at a time. The default is 80, and this service holds a cross-encoder
-      # and an embedding model in memory and peaks at 2.694 GiB for a single question —
+      # and an embedding model in memory and peaks at 2.694 GiB for a single question -
       # two concurrent requests on one instance is an OOM, not a throughput gain.
       containerConcurrency: 1
       timeoutSeconds: 300
@@ -57,7 +57,7 @@ spec:
           resources:
             limits:
               # 4 GiB against a measured 2.694 GiB peak. Cloud Run bills per GiB-second
-              # while a request is in flight, so this is not free headroom — but an
+              # while a request is in flight, so this is not free headroom, but an
               # instance killed mid-request costs a retry and a cold start.
               memory: 4Gi
               cpu: "2"

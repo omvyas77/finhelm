@@ -61,7 +61,7 @@ def header(row: dict) -> str:
     date = row.get("date") or "undated"
 
     if row.get("source") == "cfpb":
-        # Complaints carry no issuer at all — the CFPB public set strips the company — but
+        # Complaints carry no issuer at all, the CFPB public set strips the company, but
         # `section` holds the product category ("Credit card", "Mortgage"), which is the
         # single most useful discriminator this collection has and the thing a question
         # about overdraft fees needs to match on.

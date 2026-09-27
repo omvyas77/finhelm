@@ -2,7 +2,7 @@
 
 The protocol is only worth having if a filter behaves identically across backends. FAISS
 post-filters in Python via stores.base.matches; pgvector turns the same dict into SQL. If
-those two drift, swapping the backend silently changes what a query returns — which is
+those two drift, swapping the backend silently changes what a query returns, which is
 worse than the backends being obviously incompatible.
 """
 
@@ -33,7 +33,7 @@ def test_pinecone_refuses_loudly_rather_than_half_working():
 
 def test_embed_dim_follows_the_model_not_a_default():
     """The regression: embed_dim was a field fixed at 384 while the shipped index is 768.
-    Nothing read it, so the disagreement was invisible — until a store used it for DDL,
+    Nothing read it, so the disagreement was invisible, until a store used it for DDL,
     where vector(384) rejects every 768-dim insert."""
     assert Config(embed_model="BAAI/bge-small-en-v1.5").embed_dim == 384
     assert Config(embed_model="BAAI/bge-base-en-v1.5").embed_dim == 768

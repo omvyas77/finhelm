@@ -5,8 +5,8 @@ The point is not the latency table. FAISS wins that at 24k vectors and would win
 network round trip in the way. The point is the second half of the report.
 
 FAISS has no WHERE clause, so `faiss_store.search` over-fetches `k * FILTER_OVERFETCH`
-neighbours and discards the ones that fail the predicate. When the predicate is narrow —
-one issuer, one form, one year — the matching rows can sit outside that window entirely,
+neighbours and discards the ones that fail the predicate. When the predicate is narrow -
+one issuer, one form, one year, the matching rows can sit outside that window entirely,
 and the store returns *fewer than k results with no error*. Postgres applies the predicate
 as part of the query and cannot do that. This script measures how often it happens on the
 filters this project actually generates, which is the honest argument for a real database
@@ -110,7 +110,7 @@ def main() -> None:
     pg = mirror_into_pg(faiss, table, dim)
 
     rows = [json.loads(line) for line in GOLDEN.read_text().splitlines() if line.strip()]
-    # expected_source is a list, not a scalar — `r.get("source")` matched nothing at all
+    # expected_source is a list, not a scalar, `r.get("source")` matched nothing at all
     # and the first run of this script reported a benchmark over zero questions while
     # printing a full results table of "n/a".
     questions = [r["question"] for r in rows

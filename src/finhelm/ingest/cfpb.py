@@ -1,15 +1,15 @@
-"""CFPB consumer complaint narratives — free API, no key required.
+"""CFPB consumer complaint narratives, free API, no key required.
 
 Narratives are published only with the consumer's consent and are PII-scrubbed by CFPB
 before release.
 
 Two payloads come out of one pass:
-  * `cfpb_narratives.jsonl` — text for retrieval
-  * `cfpb_structured.parquet` — the full record for an earlier disparity module
+  * `cfpb_narratives.jsonl`, text for retrieval
+  * `cfpb_structured.parquet`, the full record for an earlier disparity module
 
 API quirks worth knowing (all discovered empirically, see notes/failures.md):
   * `format=json` returns 404. The endpoint already returns JSON.
-  * Offset paging (`frm`/`from`/`offset`) is silently ignored — every page comes back
+  * Offset paging (`frm`/`from`/`offset`) is silently ignored, every page comes back
     identical. Deep paging requires the `search_after` cursor instead.
 """
 
@@ -77,7 +77,7 @@ def fetch_product(product: str) -> list[dict]:
 
     Sampling has to be stratified by time. The API sorts newest-first and ignores
     offset paging, so a flat "take the first 5,000" collapses the window to the
-    most recent few months regardless of `date_received_min` — which silently
+    most recent few months regardless of `date_received_min`, which silently
     destroys every temporal question in the golden set.
     """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)

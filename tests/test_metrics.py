@@ -30,8 +30,8 @@ def gold(snippet=GOLD_TEXT, doc_id=DOC):
 def test_hit_regardless_of_chunk_length():
     """A `fixed` chunk is ~30x longer than a `sentence_window` one, so both a chunk that
     swallows the gold span whole and a chunk that captures only part of it must count as
-    hits. `overlap` is asymmetric — it reports how much of the gold span the chunk holds,
-    which differs between the two — but both clear is_hit."""
+    hits. `overlap` is asymmetric, it reports how much of the gold span the chunk holds,
+    which differs between the two, but both clear is_hit."""
     long_chunk = "Preamble text. " * 60 + GOLD_TEXT + " Trailing discussion. " * 40
     short_chunk = "increased to 5.9 percent for the fourth quarter of 2025"
 
@@ -105,7 +105,7 @@ def test_mrr_uses_rank_of_first_hit():
 
 def test_retrieval_metrics_are_none_without_gold_spans():
     """Negatives have no passage to retrieve. None means 'not applicable' and is dropped
-    from the aggregate mean — scoring them 0.0 would punish correct abstention."""
+    from the aggregate mean, scoring them 0.0 would punish correct abstention."""
     assert m.recall_at_k([chunk("x")], [], k=5) is None
     assert m.mrr([chunk("x")], []) is None
 

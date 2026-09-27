@@ -48,7 +48,7 @@ COLUMNS = [
 
 # Runs recorded before retrieval latency was broken out only carry the combined figure.
 # For a --retrieve-only run the two are equal by construction (generation_ms is 0), so
-# reading the combined column is exact — but only for those runs, which is why the
+# reading the combined column is exact, but only for those runs, which is why the
 # fallback is gated on retrieve_only below rather than applied unconditionally.
 LEGACY_LATENCY = {
     "p50_retrieval_ms": "p50_latency_ms",
@@ -68,7 +68,7 @@ def cell_value(row: dict, key: str):
     if row.get(key) is not None:
         return row[key]
     legacy = LEGACY_LATENCY.get(key)
-    # A generating run has no usable retrieval figure in the old schema — its combined
+    # A generating run has no usable retrieval figure in the old schema, its combined
     # latency is dominated by generation. Return None so the cell renders blank rather
     # than reporting the generator's time as the retriever's.
     if legacy and row.get("retrieve_only", True):
@@ -81,7 +81,7 @@ def load_runs() -> dict[tuple[str, str, bool], dict]:
 
     "Best" means the widest run, not the most recent one. A `--limit 8` smoke run carries
     the same config as the full run it was smoke-testing, so plain last-write-wins would
-    let a throwaway 8-question check silently replace a 75-question measurement — and the
+    let a throwaway 8-question check silently replace a 75-question measurement, and the
     replacement is invisible in the rendered table, because both rows look equally real.
     Ties on question count go to the later run, which is the case where "a re-run
     supersedes the earlier one" actually holds.
@@ -170,7 +170,7 @@ def main() -> None:
     spans = max((r.get("n_gold_spans") or 0) for r in runs.values())
     if spans:
         print(f"\nIntervals are Wilson 95% on {spans:.0f} gold spans. Cells whose intervals "
-              f"overlap are not distinguishable on this\ngolden set — compare two configs "
+              f"overlap are not distinguishable on this\ngolden set, compare two configs "
               f"with a paired bootstrap (evals.metrics.bootstrap_paired), which is far\n"
               f"more sensitive because both ran the identical questions.")
 

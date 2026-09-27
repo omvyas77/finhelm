@@ -5,7 +5,7 @@ statute references, "Item 1A", and dollar figures. A 384-dim embedding smears "$
 billion" and "$1.5 billion" onto nearly the same point; an inverted index does not.
 
 Tokenisation keeps `$`, `%`, `.` and `-` inside tokens rather than using a bare
-`.split()`, so "$1.2bn", "10-K" and "1a" survive as single terms — the exact tokens this
+`.split()`, so "$1.2bn", "10-K" and "1a" survive as single terms, the exact tokens this
 retriever is here to match.
 """
 
@@ -63,7 +63,7 @@ class Bm25Index:
 def load_index(collection: str, strategy: str,
                chunk_tokens: int = DEFAULT_CHUNK_TOKENS) -> Bm25Index:
     """Build from the chunk parquet. ~13k docs indexes in a couple of seconds, so this is
-    cached per process rather than persisted — one less artifact to keep in sync."""
+    cached per process rather than persisted: one less artifact to keep in sync."""
     df = pd.read_parquet(
         PROCESSED / f"{chunks_name(collection, strategy, chunk_tokens)}.parquet")
     return Bm25Index(

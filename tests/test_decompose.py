@@ -29,7 +29,7 @@ def test_api_failure_returns_the_original_question(monkeypatch):
 
 def test_a_single_sub_question_keeps_the_users_exact_wording(monkeypatch):
     """When the model judges a question atomic it tends to echo a paraphrase. Retrieval
-    should stay on the original string — BM25 in particular scores it differently."""
+    should stay on the original string, BM25 in particular scores it differently."""
     monkeypatch.setattr(D, "claude",
                         lambda *a, **k: '{"sub_questions": ["What is JPM CET1?"]}')
     assert D.decompose(Q) == [Q]

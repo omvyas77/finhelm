@@ -3,7 +3,7 @@
 Two different quotas arrive as the same HTTP status with the same "Please retry in Ns"
 hint, and the correct response to them is opposite: pace-and-retry for the per-minute
 cap, give up immediately for the per-day one. Getting that backwards is expensive in a
-way that does not look like a bug — a scoring pass spends four minutes retrying into a
+way that does not look like a bug, a scoring pass spends four minutes retrying into a
 window that will not reopen until midnight, then reports a per-minute problem.
 
 These are string-matching tests because the discrimination *is* string matching: the
@@ -63,7 +63,7 @@ def test_retry_delay_is_parsed_from_the_error_body():
 
 
 def test_retry_delay_falls_back_to_capped_exponential():
-    """No hint in the body — back off exponentially, but never longer than a minute."""
+    """No hint in the body, back off exponentially, but never longer than a minute."""
     assert _retry_after(Exception("429 no hint here"), attempt=3) == 8.0
     assert _retry_after(Exception("429 no hint here"), attempt=20) == 60.0
 

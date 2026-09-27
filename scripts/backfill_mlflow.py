@@ -6,7 +6,7 @@ pointed at http://localhost:5000
 with no MLflow server behind it, and on macOS that port belongs to Control Center's AirPlay
 receiver, which replies 403. Eighteen ablation cells logged into a void.
 
-Nothing was actually lost — `evals/results/<run>.json` holds the config, the summary and
+Nothing was actually lost, `evals/results/<run>.json` holds the config, the summary and
 every per-question record, which is a superset of what gets logged. So the experiment
 record is reconstructible from disk rather than by re-running a sweep that cost real money.
 
@@ -34,7 +34,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from evals import metrics as M  # noqa: E402
 
 # Imported for the side effect of loading .env, which is where MLFLOW_TRACKING_URI lives.
-# Without it this script and run_eval.py resolve *different* stores — run_eval reads the
+# Without it this script and run_eval.py resolve *different* stores, run_eval reads the
 # dotenv value, while a bare `import mlflow` here fell back to a stray
 # sqlite:///mlflow.db. Two tracking stores that each look fine in isolation is a worse
 # failure than no tracking at all, because the ablation would appear to be missing runs
@@ -70,7 +70,7 @@ def main() -> None:
             urllib.request.urlopen(f"{uri}/api/2.0/mlflow/experiments/search?max_results=1",
                                    timeout=5)
         except urllib.error.HTTPError as exc:
-            sys.exit(f"tracking server at {uri} answered {exc.code} — "
+            sys.exit(f"tracking server at {uri} answered {exc.code}, "
                      "if that is 403 on port 5000, macOS AirPlay owns the port; "
                      "set MLFLOW_TRACKING_URI=file:./mlruns")
         except Exception as exc:  # noqa: BLE001

@@ -2,11 +2,11 @@
 
 The API first shipped with no tests at all, which is how the `agentic` field went
 missing: the Streamlit sidebar offered a toggle, the request body had nowhere to put it,
-and the service used its pinned config regardless. Nothing failed — the toggle just did
+and the service used its pinned config regardless. Nothing failed, the toggle just did
 nothing, in the only mode a deployment ever runs in.
 
-`answer` is monkeypatched throughout. These assert the contract of the HTTP layer —
-what it accepts, what it forwards, what it puts in the response — and deliberately not
+`answer` is monkeypatched throughout. These assert the contract of the HTTP layer -
+what it accepts, what it forwards, what it puts in the response, and deliberately not
 the quality of the retrieval underneath it, which is what evals/ is for. That keeps them
 free, offline, and eligible for the fast CI tier.
 """

@@ -6,7 +6,7 @@ work" is never a 10-K), so paying a network round trip on every request to learn
 would be a poor trade.
 
 The returned `Route` carries *why* it decided, not just what. That field becomes a trace
-span attribute earlier and the debugging surface when an answer is wrong — "the answer
+span attribute earlier and the debugging surface when an answer is wrong, "the answer
 was bad" and "the router never looked at the right collection" are different bugs and
 you cannot tell them apart after the fact without this.
 """
@@ -52,8 +52,8 @@ def _compile(terms: set[str]) -> re.Pattern:
     """Whole-token matching, with an optional plural. A plain substring test is wrong
     here: the three-letter finance abbreviations ("cre", "sec", "eps") are all substrings
     of common words, so `"cre" in "credit card"` silently routes complaint questions into
-    filings. Whole-token alone is too strict in the other direction — real questions say
-    "late fees", not "late fee" — hence the trailing `s?`."""
+    filings. Whole-token alone is too strict in the other direction, real questions say
+    "late fees", not "late fee", hence the trailing `s?`."""
     alternation = "|".join(re.escape(t) for t in sorted(terms, key=len, reverse=True))
     return re.compile(rf"(?<!\w)(?:{alternation})s?(?!\w)")
 
@@ -69,11 +69,11 @@ def _score(query: str, pattern: re.Pattern) -> int:
 # A comparison needs both sides of the corpus even when only one side is named. "Do banks
 # discuss late fees differently than consumers complain about them?" matches the complaints
 # vocabulary twice and the filings vocabulary zero times, so keyword counting routes it to
-# complaints — and the model then answers "how banks discuss late fees" while citing only
+# complaints, and the model then answers "how banks discuss late fees" while citing only
 # consumer narratives. Confidently answering half a question is worse than being slow, so
 # comparative phrasing overrides a one-sided keyword verdict.
 # Inflections matter here and the first version dropped two of them. `compared? (?:to|with)`
-# never matched "Comparing X and Y" — the participle is not covered by the optional "d",
+# never matched "Comparing X and Y": the participle is not covered by the optional "d",
 # and the phrasing carries no "to"/"with" for it to anchor on. `contrast` failed the same
 # way: the trailing (?!\w) boundary rejects "contrasting" because the next character is a
 # word character. Both are among the commonest ways to phrase a comparison, and a missed
@@ -91,7 +91,7 @@ def _heuristic(query: str) -> Route | None:
     complaints = _score(query, _COMPLAINTS_RE)
 
     if bool(filings) != bool(complaints) and _COMPARATIVE.search(query.lower()):
-        return None  # one-sided keywords but comparative intent — let the model decide
+        return None  # one-sided keywords but comparative intent, let the model decide
 
     if filings and complaints:
         return Route(["filings", "complaints"], "heuristic",
@@ -100,7 +100,7 @@ def _heuristic(query: str) -> Route | None:
         return Route(["filings"], "heuristic", f"{filings} filings term(s), 0 complaints")
     if complaints:
         return Route(["complaints"], "heuristic", f"{complaints} complaints term(s), 0 filings")
-    return None  # no signal either way — hand it to the model
+    return None  # no signal either way, hand it to the model
 
 
 _PROMPT = """Classify this question about US banking into exactly one label.

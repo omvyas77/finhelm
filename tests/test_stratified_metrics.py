@@ -53,7 +53,7 @@ def _record(spans: int, hits: int) -> dict:
     gold = [{"doc_id": f"D{i}", "snippet": f"alpha bravo charlie delta echo foxtrot golf "
                                           f"hotel india juliet {i}"} for i in range(spans)]
     retrieved = [{"doc_id": g["doc_id"], "text": g["snippet"]} for g in gold[:hits]]
-    # `answer` is required by aggregate() — the citation metrics read it — and run_eval
+    # `answer` is required by aggregate(), the citation metrics read it, and run_eval
     # always sets it, so an empty string is the faithful stand-in for a retrieve-only run.
     return {"gold_spans": gold, "retrieved": retrieved, "answer": ""}
 

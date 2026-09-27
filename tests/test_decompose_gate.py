@@ -34,7 +34,7 @@ def test_skips_single_fact_questions(question):
 
 def test_comparative_inflections_all_count():
     """The original router pattern matched compare/compared but not comparing, comparison
-    or contrasting — the participle fails the trailing word boundary, and the noun form
+    or contrasting, the participle fails the trailing word boundary, and the noun form
     was absent. All three are common phrasings for a two-sided question."""
     for verb in ("compare", "compares", "compared", "comparing", "comparison",
                  "comparisons", "contrast", "contrasting", "contrasts"):
@@ -54,7 +54,7 @@ def test_single_letter_ticker_does_not_match_inside_words():
 
 
 def test_short_name_fragments_are_not_used_as_issuer_evidence():
-    """'Bank of America' contributes only 'america' — 'bank' and 'of' would match almost
+    """'Bank of America' contributes only 'america', 'bank' and 'of' would match almost
     any filings question and manufacture a second issuer out of nothing."""
     assert _issuers("What are the bank's capital requirements?") == set()
 

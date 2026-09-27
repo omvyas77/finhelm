@@ -4,8 +4,8 @@
         --collection filings --strategy semantic --contextual \
         --embed-model BAAI/bge-large-en-v1.5 --vectors ~/Downloads/vectors.npz
 
-The counterpart to export_for_colab.py. Metadata is rebuilt from the local chunk parquet —
-it never left this machine — and the vectors are matched back on chunk_id rather than on
+The counterpart to export_for_colab.py. Metadata is rebuilt from the local chunk parquet -
+it never left this machine, and the vectors are matched back on chunk_id rather than on
 row order, because a notebook that shuffles, batches or drops a row would otherwise
 produce an index whose vectors belong to the wrong chunks. That failure is silent: every
 query still returns results, they are simply the wrong ones.
@@ -58,7 +58,7 @@ def main() -> None:
     missing = [c for c in ids if c not in by_id]
     if missing:
         raise SystemExit(f"{len(missing)} chunk_ids are not in the local parquet, "
-                         f"e.g. {missing[:3]} — the export and this corpus disagree")
+                         f"e.g. {missing[:3]}, the export and this corpus disagree")
     if len(ids) != len(df):
         print(f"  ! {len(df) - len(ids)} local chunks have no vector and will be omitted")
 

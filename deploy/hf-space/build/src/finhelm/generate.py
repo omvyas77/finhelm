@@ -4,12 +4,12 @@ Two design choices carry the whole evaluation:
 
 Numbered sources ([S1]...[Sn]) make citation validity *countable*. A model that cites [S9]
 when eight sources were supplied has hallucinated in a way that is detectable without a
-judge model, without embeddings, and without human review — a regex finds it.
+judge model, without embeddings, and without human review, a regex finds it.
 
 The exact-string abstention rule (INSUFFICIENT_CONTEXT:) makes refusal countable for the
 same reason. "I'm not sure, but probably..." is unparseable; a literal sentinel is not.
 That is what turns abstention recall and over-refusal into two separate numbers rather
-than one vague impression, and those two numbers trade against each other — which is the
+than one vague impression, and those two numbers trade against each other, which is the
 finding the eval exists to measure.
 """
 

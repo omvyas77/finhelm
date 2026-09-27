@@ -6,7 +6,7 @@ than asking anyone to trust a number in a README. A system that reports recall@1
 and an over-refusal rate of 0.1202 to whoever asks is making a checkable claim.
 
 `/config` exists for the same reason. Every retrieval knob that has been argued about in
-this project — chunk size, pool width, the RRF constant, whether windowing is on — is a
+this project, chunk size, pool width, the RRF constant, whether windowing is on, is a
 Config field, so returning `asdict(cfg)` makes the running configuration inspectable
 instead of inferred from the deployment.
 """
@@ -44,7 +44,7 @@ app = FastAPI(
     version="0.3.0",
 )
 
-# The configuration that produced the numbers /eval-report serves — not the best
+# The configuration that produced the numbers /eval-report serves, not the best
 # configuration measured anywhere.
 #
 # rrf_k stays at the default 60 despite the fusion sweep preferring 20 at this pool width
@@ -69,7 +69,7 @@ if TRACING:
 
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=3, max_length=2000)
-    # Both optional overrides exist for debugging a bad answer against the live index —
+    # Both optional overrides exist for debugging a bad answer against the live index:
     # narrowing the collections or forcing a ticker filter is how you tell "retrieval
     # never saw it" apart from "the model ignored it".
     collections: list[str] | None = Field(
@@ -78,7 +78,7 @@ class AskRequest(BaseModel):
         None, description="metadata filter, e.g. {'ticker': 'JPM'}")
     # The one knob a demo has any business flipping. Left unset the service uses its
     # pinned config; the Streamlit UI offers it as a toggle, and without it here that
-    # toggle silently did nothing whenever the UI was talking to the API — which is
+    # toggle silently did nothing whenever the UI was talking to the API, which is
     # every deployment, since compose always wires FINHELM_API_URL.
     agentic: bool | None = Field(
         None, description="override query decomposition for this request")
@@ -133,7 +133,7 @@ async def request_id(request: Request, call_next):
 async def unhandled(request: Request, exc: Exception) -> JSONResponse:
     """Return the request id with the error.
 
-    A 500 with no correlation id is unactionable — the caller cannot tell you which
+    A 500 with no correlation id is unactionable, the caller cannot tell you which
     request failed, and the logs cannot be joined to it.
     """
     return JSONResponse(
@@ -215,7 +215,7 @@ def ask(request: AskRequest, http_request: Request) -> AskResponse:
         ))
 
     # One line per request, emitted whether or not a collector is listening. Chunk ids
-    # rather than chunk text — enough to reconstruct what retrieval returned for a request
+    # rather than chunk text, enough to reconstruct what retrieval returned for a request
     # that went wrong, without putting filing prose in the log stream.
     log_request(
         request_id=request_id, trace_id=result.trace_id, config=result.config,

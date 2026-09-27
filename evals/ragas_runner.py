@@ -17,11 +17,11 @@ figures.
 
 *The judge is cached on disk, in a directory named for the judge model.* Ragas' own
 DiskCacheBackend keys on the actual prompt sent to the model, so a change to a metric's
-prompt correctly misses the cache — better than hand-rolling a key from (metric, question,
+prompt correctly misses the cache, better than hand-rolling a key from (metric, question,
 answer, contexts), which would serve stale scores in exactly that case.
 
 But the key does *not* include the model. `ragas.cache._generate_cache_key` starts with
-`if inspect.ismethod(func): args = args[1:]`, which strips `self` — and `self` is the
+`if inspect.ismethod(func): args = args[1:]`, which strips `self`, and `self` is the
 wrapper carrying the model. Two different judges asked the same question therefore collide
 on one cache entry (verified in tests/test_ragas_cache.py). Left alone, switching
 `judge_model` and re-scoring would replay the *previous* judge's verdicts while the output
@@ -29,7 +29,7 @@ file recorded the new judge's name: a mislabelled artifact, which is worse than 
 because nothing about it looks wrong.
 
 Partitioning the cache directory by model makes that switch a guaranteed miss and keeps
-each judge's entries independently reusable. This is not hypothetical — three judge models
+each judge's entries independently reusable. This is not hypothetical, three judge models
 were tried and rejected before this one (see config.py), so the switch is a thing that
 actually happens here.
 
@@ -61,7 +61,7 @@ CACHE_ROOT = ROOT / ".cache" / "ragas"
 def cache_dir(judge_model: str) -> Path:
     """Cache location for one judge, kept apart from every other judge's entries.
 
-    Partitioned because the cache key itself cannot tell two models apart — see the
+    Partitioned because the cache key itself cannot tell two models apart, see the
     module docstring. A directory per model is cruder than fixing the key, but it works
     against the library as shipped rather than depending on ragas internals staying put.
     """
@@ -157,7 +157,7 @@ def main() -> None:
     for note in skipped:
         print(f"  skipped {note}")
     if not rows:
-        sys.exit("nothing scoreable — run without --retrieve-only to produce answers")
+        sys.exit("nothing scoreable, run without --retrieve-only to produce answers")
     if args.limit:
         rows = rows[: args.limit]
 
@@ -189,8 +189,8 @@ def main() -> None:
     )
 
     # Aggregate per metric over the rows that actually returned a number. Ragas emits NaN
-    # for a judge call that failed, and numpy's mean of a column containing NaN is NaN —
-    # so the headline figure silently becomes unreadable when one call out of hundreds
+    # for a judge call that failed, and numpy's mean of a column containing NaN is NaN,
+    # so the headline figure becomes unreadable when one call out of hundreds
     # times out. Counting the failures separately keeps a mostly-successful run usable and
     # makes a badly-degraded one obvious instead of merely blank.
     frame = result.to_pandas()

@@ -23,7 +23,7 @@ def env(name: str) -> str:
 
     `load_dotenv` will not overwrite a name that already exists in the environment, and
     some shells export API keys as the empty string. The result is a var that is present,
-    falsy, and silently shadows the real value in .env — which reads as "key not set"
+    falsy, and silently shadows the real value in .env, which reads as "key not set"
     while the key sits right there in the file. Real values still win over .env, so CI
     secrets are unaffected.
     """
@@ -49,7 +49,7 @@ def _anthropic():
 # recosted from the token counts, which are recorded exactly.
 #
 # Verify against https://www.anthropic.com/pricing before quoting these numbers anywhere
-# — the token counts below are measured, the rates are not.
+#, the token counts below are measured, the rates are not.
 PRICING = {
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
     # Retained after the switch to Sonnet so the early runs that were generated with
@@ -87,7 +87,7 @@ def claude(
     """`timeout` is seconds for this one request.
 
     The SDK's default is ten minutes, which is a reasonable default for a batch job and a
-    terrible one for a call sitting in a request path — a hung planner would hold an /ask
+    terrible one for a call sitting in a request path, a hung planner would hold an /ask
     open far past any sane client timeout. Callers on the request path pass their own.
     """
     kwargs = {
@@ -97,7 +97,7 @@ def claude(
         # anthropic SDK 1.0.0 dropped `temperature` from the typed signature for the 4.6
         # models (sampling moved to output_config.effort), but the HTTP API still honours
         # it. Passing it as a typed kwarg raises TypeError; extra_body is the way through.
-        # Temperature 0 is not cosmetic here — the ablation compares runs against each
+        # Temperature 0 is not cosmetic here, the ablation compares runs against each
         # other, and a sampling model would put noise in every delta.
         "extra_body": {"temperature": temperature},
     }

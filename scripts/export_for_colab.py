@@ -3,13 +3,13 @@
     python scripts/export_for_colab.py --collection filings --strategy semantic
 
 Only the *embedding* step is worth moving off this machine. Chunking is cheap, FAISS index
-construction is cheap, and both depend on code that lives here — but embedding 43k chunks
+construction is cheap, and both depend on code that lives here, but embedding 43k chunks
 through a 768-dim model is ~23 minutes on local MPS and ~2 minutes on a Colab T4, and the
 gap widens with model size. bge-large is 75 minutes locally, which is why it was ruled out;
 on a T4 it is about five.
 
 What crosses the wire is deliberately minimal: chunk_id and the exact string to embed. No
-metadata, no gold spans, nothing that would let the remote copy drift from local state —
+metadata, no gold spans, nothing that would let the remote copy drift from local state -
 the returned vectors are matched back on chunk_id, and build_index_from_vectors.py rebuilds
 the metadata locally from the parquet that never left.
 

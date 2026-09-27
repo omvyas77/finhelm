@@ -2,7 +2,7 @@
 #
 # Two stages. The builder carries a C toolchain and pip's ~1 GB of wheel downloads; the
 # runtime carries neither, because the only thing worth shipping out of a build is the
-# result. Model weights are baked in a dedicated layer — see the offline note below.
+# result. Model weights are baked in a dedicated layer, see the offline note below.
 
 ARG PYTHON_VERSION=3.10-slim-bookworm
 # Pinned to what actually produced the measured numbers. `python:3-slim` would silently
@@ -26,7 +26,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 #
 # Three findings, each of which cost a build to establish:
 #
-#   * PyPI's linux torch wheel is a CUDA build on arm64 as well as amd64 — this one is
+#   * PyPI's linux torch wheel is a CUDA build on arm64 as well as amd64, this one is
 #     literally `2.13.0+cu130`. It does not merely carry 2.1 GB of nvidia-cublas, cudnn,
 #     nccl and triton as dependencies; it hard-links libcudart at import, so installing
 #     it without them yields a torch that cannot `import torch` at all.
@@ -50,8 +50,8 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 # Split from the leak check below: one `&&`/`||` chain covering both would report
-# "CUDA packages leaked" when what actually happened was that torch failed to import —
-# which is exactly the failure that caught the +cu130 wheel.
+# "CUDA packages leaked" when what actually happened was that torch failed to import,
+# which is the failure that caught the +cu130 wheel.
 RUN python -c "import torch; print('torch', torch.__version__)"
 RUN leaked="$(pip list --format=freeze | grep -E '^(nvidia-|triton==|pytorch-triton)' || true)"; \
     if [ -n "$leaked" ]; then \
@@ -63,7 +63,7 @@ RUN leaked="$(pip list --format=freeze | grep -E '^(nvidia-|triton==|pytorch-tri
 # --------------------------------------------------------------- weights ---
 # Baked, not fetched at boot. Pulling bge-base and the reranker on first request costs
 # ~60 s of cold start and makes the container's readiness depend on huggingface.co being
-# up — an external dependency in the request path of a service that otherwise has none.
+# up, an external dependency in the request path of a service that otherwise has none.
 #
 # Its own stage so that editing requirements.txt does not re-download 1.5 GB of weights,
 # and editing the model pins does not rebuild the dependency tree.
@@ -80,8 +80,8 @@ ENV RERANK_MODEL=${RERANK_MODEL}
 
 # Two steps, with the offline fence switched on between them, and both delegating to a
 # real script. Heredocs (`RUN python - <<'PY'`) are a BuildKit feature: under the legacy
-# builder — which is what `docker build` silently falls back to when `docker buildx` is not
-# installed — the heredoc has no body, python reads an empty stdin, and the step exits 0
+# builder, which is what `docker build` silently falls back to when `docker buildx` is not
+# installed, the heredoc has no body, python reads an empty stdin, and the step exits 0
 # having done nothing. That is how the first version of this file "succeeded" all the way
 # to a COPY three stages later. See scripts/bake_weights.py.
 COPY scripts/bake_weights.py /tmp/bake_weights.py
@@ -91,7 +91,7 @@ RUN python /tmp/bake_weights.py fetch
 # embedding width can be checked here without dragging the application into this stage.
 COPY src/finhelm/config.py /tmp/config.py
 
-# The fence goes on before the check, not after, or the check proves nothing — a file the
+# The fence goes on before the check, not after, or the check proves nothing, a file the
 # fetch missed would simply be downloaded rather than reported. These are the same two
 # variables the runtime stage sets, so this verifies the runtime's actual conditions.
 ENV HF_HUB_OFFLINE=1
@@ -102,7 +102,7 @@ RUN python /tmp/bake_weights.py verify --config /tmp/config.py
 FROM python:${PYTHON_VERSION} AS runtime
 
 # libgomp is the OpenMP runtime both faiss-cpu and torch link against. It ships with the
-# build toolchain, so its absence surfaces only in the slim runtime — as an ImportError on
+# build toolchain, so its absence surfaces only in the slim runtime, as an ImportError on
 # the first `import faiss`, long after the build reported success.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libgomp1 \
@@ -150,7 +150,7 @@ USER finhelm
 
 # The whole application graph, imported as the non-root user with the Hub fenced off.
 # torch arrives here via --no-deps from a separate index, so this is what confirms the
-# requirements install actually put back everything torch needs — and it covers what the
+# requirements install actually put back everything torch needs, and it covers what the
 # weights stage cannot: faiss's OpenMP linkage, streamlit, the FastAPI app, and whether
 # uid 10001 can read the files COPY placed. Model loading stays lazy, so it costs about a
 # second and downloads nothing.

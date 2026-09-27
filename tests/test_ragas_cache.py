@@ -1,7 +1,7 @@
 """Why the Ragas judge cache is partitioned by model.
 
 `ragas.cache._generate_cache_key` builds its key from the function qualname, the
-positional args and the kwargs — after doing `if inspect.ismethod(func): args = args[1:]`
+positional args and the kwargs, after doing `if inspect.ismethod(func): args = args[1:]`
 to drop `self`. For a bound method on an LLM wrapper, `self` is the only thing carrying
 the model identity, so two different judges asked an identical question hash to the same
 entry.
@@ -11,7 +11,7 @@ same judge) and silently wrong for the case this project actually hits: three ju
 were tried and rejected before the current one, and a re-score after such a switch would
 replay the old judge's verdicts under the new judge's name in the output file.
 
-These tests pin both halves — the collision that forces the workaround, and the
+These tests pin both halves, the collision that forces the workaround, and the
 partitioning that contains it. The first one exists so that if a future ragas release puts
 the model into the key, this fails and tells us the directory split is now redundant,
 rather than leaving a workaround nobody dares remove.
@@ -53,7 +53,7 @@ def test_cache_key_cannot_distinguish_two_judge_models():
     key_b = _generate_cache_key(b.generate, (b, prompt), {})
 
     assert key_a == key_b, (
-        "ragas now distinguishes judge models in its cache key — the per-model cache "
+        "ragas now distinguishes judge models in its cache key, the per-model cache "
         "directory in evals/ragas_runner.py is no longer needed"
     )
 

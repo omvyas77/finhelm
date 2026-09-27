@@ -42,6 +42,6 @@ def test_faiss_matches_bruteforce():
         # for a reason that is not a correctness bug.
         assert np.allclose(scores[positions[0]], scores[expected], atol=1e-5)
 
-        # A vector must still retrieve something at self-similarity 1.0 first — itself,
+        # A vector must still retrieve something at self-similarity 1.0 first, itself,
         # or one of its exact duplicates.
         assert scores[positions[0][0]] == pytest.approx(1.0, abs=1e-5)

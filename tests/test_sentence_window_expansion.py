@@ -8,7 +8,7 @@ actually bit:
   1. keying the sentence list on doc_id instead of (doc_id, section), which interleaves
      the sections of the 15 multi-section filings and slices a window out of the wrong one;
   2. writing the expanded text through `hit.metadata`, which is the BM25 index's own
-     cached parquet record — one query would then leave every later query in the process
+     cached parquet record: one query would then leave every later query in the process
      retrieving pre-expanded text.
 
 The last test is the end-to-end one: expansion must never lose a hit. Since the window
@@ -100,7 +100,7 @@ def test_unknown_chunk_ids_survive_a_mixed_strategy_result_set(maps):
 def test_expansion_never_turns_a_hit_into_a_miss(maps):
     """is_hit must be monotonic in chunk text, or expansion could lose recall.
 
-    It is not obviously monotonic — `_contradicts` rejects a chunk that states figures and
+    It is not obviously monotonic, `_contradicts` rejects a chunk that states figures and
     shares none with the gold span, and a window drags in neighbouring figures the lone
     sentence did not have. This asserts the direction the measured runs showed (12 hits
     gained, 0 lost); if a future change to _contradicts breaks it, the sentence_window
@@ -108,7 +108,7 @@ def test_expansion_never_turns_a_hit_into_a_miss(maps):
     """
     import pandas as pd
 
-    # Real sentences, and specifically ones carrying figures — a sentence with no numbers
+    # Real sentences, and specifically ones carrying figures, a sentence with no numbers
     # cannot exercise _contradicts, which is the only non-monotonic path in is_hit.
     frame = pd.read_parquet(CHUNKS, columns=["chunk_id", "text"])
     numeric = frame[frame["text"].str.contains(r"\d", regex=True)].iloc[::400][:200]
@@ -126,5 +126,5 @@ def test_expansion_never_turns_a_hit_into_a_miss(maps):
 
     assert not regressions, (
         f"{len(regressions)} sentence(s) matched their own gold span but their window did "
-        f"not — is_hit is no longer monotonic, e.g. {regressions[:3]}"
+        f"not, is_hit is no longer monotonic, e.g. {regressions[:3]}"
     )

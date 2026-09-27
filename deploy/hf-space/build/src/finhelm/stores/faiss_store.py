@@ -1,7 +1,7 @@
 """FAISS implementation of the VectorStore protocol.
 
 `IndexFlatIP` over normalized vectors gives exact cosine similarity. Flat is the right
-choice at this corpus size — approximate indexes (HNSW/IVF) trade recall for speed that
+choice at this corpus size, approximate indexes (HNSW/IVF) trade recall for speed that
 ~31k vectors do not need, and an exact baseline keeps the ablation's retrieval numbers
 attributable to the retriever rather than to index approximation.
 

@@ -1,7 +1,7 @@
 # Hugging Face Space, Docker SDK.
 #
-# Streamlit is no longer an SDK the Space create API accepts — it takes only
-# gradio|docker|static — so the runtime is pinned here instead, which is better anyway:
+# Streamlit is no longer an SDK the Space create API accepts, it takes only
+# gradio|docker|static, so the runtime is pinned here instead, which is better anyway:
 # the same CPU-torch discipline as the main image applies, and nothing is inherited from
 # a base whose contents can change.
 FROM python:3.10-slim-bookworm
@@ -24,7 +24,7 @@ ENV HOME=/home/user \
 
 WORKDIR $HOME/app
 
-# torch from the CPU index. On amd64 the PyPI wheel bundles the CUDA runtime — ~2.5 GB of
+# torch from the CPU index. On amd64 the PyPI wheel bundles the CUDA runtime, ~2.5 GB of
 # nvidia-* this Space can never use, and a Space rebuilds on every push. --no-deps is what
 # makes the CPU index usable at all: --index-url replaces PyPI rather than adding to it,
 # so torch's ordinary dependencies have nowhere to resolve from. requirements.txt supplies

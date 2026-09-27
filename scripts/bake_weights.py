@@ -1,8 +1,8 @@
 """Fetch the model weights into the image, then prove they load with the network fenced.
 
 A script rather than a heredoc in the Dockerfile, and the reason is not style. `RUN python
-- <<'PY'` is a BuildKit feature. Run under the legacy builder — which is what you get when
-`docker buildx` is not installed, with no warning that it happened — the heredoc has no
+- <<'PY'` is a BuildKit feature. Run under the legacy builder, which is what you get when
+`docker buildx` is not installed, with no warning that it happened, the heredoc has no
 body, python reads an empty stdin, and the step **exits 0 having done nothing**. Both
 weight steps silently no-opped and the build failed three stages later at a COPY, pointing
 at the wrong thing entirely. A missing file fails loudly; a no-op does not.
@@ -46,7 +46,7 @@ def fetch() -> None:
         # Printed, and asserted: an empty snapshot is the failure this file exists to
         # make impossible to miss.
         if not any(f.endswith(".safetensors") for f in files):
-            raise SystemExit(f"{repo} fetched no safetensors — got {files}")
+            raise SystemExit(f"{repo} fetched no safetensors, got {files}")
         print(f"fetched {repo} -> {path} ({len(files)} files)")
 
 
@@ -67,7 +67,7 @@ def verify(config_path: str) -> None:
 
     # The check this step exists to make. EMBED_DIMS is what a store uses to size a vector
     # column before a single embedding exists, so nothing at runtime ever compares it
-    # against the model — a 384 sitting beside a 768-dim model stays invisible until a store
+    # against the model, a 384 sitting beside a 768-dim model stays invisible until a store
     # is built from it. Asserting it here means the image cannot ship with the two disagreeing.
     declared = config.EMBED_DIMS[embed_model]
     # Renamed in sentence-transformers 6; the old name warns but still works.

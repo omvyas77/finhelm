@@ -3,14 +3,14 @@
 The problem this solves: a retrieval gate needs an index, the index is 961 MB of
 gitignored build artifact, and building it from the raw corpus takes about 90 minutes on CPU.
 Without something like this, the CI "eval gate" can only re-read numbers somebody else
-recorded — which gates nothing about the code in the pull request.
+recorded, which gates nothing about the code in the pull request.
 
 So CI gets a corpus small enough to commit and to index in under ten minutes on CPU: every chunk
 holding a gold span for a stratified subset of the golden set, plus a sample of
 distractors drawn from the same corpus.
 
 **The number this produces is a tripwire, not a quality measure.** Recall against ~2,000
-chunks is not comparable to recall against 24,650 — fewer distractors is an easier
+chunks is not comparable to recall against 24,650, fewer distractors is an easier
 retrieval problem, and the CI figure will read higher than the headline 0.7377. It is
 useful for one thing: noticing that a change to chunking, fusion, filtering or reranking
 moved retrieval, on every push, for free. The floor in the workflow is calibrated against
@@ -37,7 +37,7 @@ sys.path.insert(0, str(ROOT / "evals"))
 import metrics as M  # noqa: E402
 
 PROCESSED = ROOT / "data" / "processed"
-# Laid out as a data dir in its own right — processed/ beside index/ — so
+# Laid out as a data dir in its own right, processed/ beside index/, so
 # FINHELM_DATA_DIR=data/ci works with no copying and no staging step.
 OUT = ROOT / "data" / "ci" / "processed"
 GOLDEN = ROOT / "evals" / "golden_set.jsonl"
@@ -58,7 +58,7 @@ def _smoke_ids() -> set[str]:
     """Questions the DeepEval judged gate answers.
 
     They must be in the fixture. The judged tier inherits FINHELM_DATA_DIR from the
-    workflow, so it retrieves from this corpus — and when the fixture was built from the
+    workflow, so it retrieves from this corpus, and when the fixture was built from the
     stratified subset alone, 7 of the 12 smoke questions had their gold spans excluded by
     construction. The suite then failed 8 of 13 in CI while failing 4 of 13 locally, and
     the difference was not answer quality: the system was being asked questions whose

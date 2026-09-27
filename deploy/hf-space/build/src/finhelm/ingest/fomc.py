@@ -1,7 +1,7 @@
 """FOMC statements and minutes from federalreserve.gov, 2022–present.
 
 Public domain (17 U.S.C. §105). Statements are short and dense; minutes are long and
-well structured. Transcripts are skipped — they carry a ~5-year release lag, so they
+well structured. Transcripts are skipped, they carry a ~5-year release lag, so they
 are useless for the recency this corpus is built around.
 
 The meeting date is kept as the document date even though minutes publish ~3 weeks
@@ -64,7 +64,7 @@ def to_text(html: str) -> str:
     for tag in tree.css("script, style"):
         tag.decompose()
     node = tree.css_first("div#article") or tree.css_first("#content") or tree.body
-    # separator=" " — without it selectolax glues adjacent block elements together, so a
+    # separator=" ", without it selectolax glues adjacent block elements together, so a
     # paragraph break becomes a word merge ("...to 4-1/4 percent.The Committee...").
     return " ".join(node.text(separator=" ").split())
 

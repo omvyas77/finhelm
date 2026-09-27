@@ -17,14 +17,14 @@ def index_name(collection: str, strategy: str, contextual: bool = False,
     """Directory name for an index.
 
     Contextual-header indexes get their own directory rather than overwriting the plain
-    one. The two are not interchangeable — a query embedded for one is being compared
-    against vectors built under different text — and keeping both on disk is what makes
+    one. The two are not interchangeable, a query embedded for one is being compared
+    against vectors built under different text, and keeping both on disk is what makes
     the comparison an A/B rather than a before-and-after with no way back.
     """
     name = f"{collection}_{strategy}" + ("_ctx" if contextual else "")
     # The embedding model is part of an index's identity: vectors from two models are not
     # comparable and have different dimensionality, so loading the wrong one either throws
-    # or — worse, if the dims happen to match — returns confident nonsense. The default
+    # or, worse, if the dims happen to match, returns confident nonsense. The default
     # model keeps the bare name so every index built before this stays loadable.
     if embed_model and embed_model != DEFAULT_EMBED_MODEL:
         name += "_" + embed_model.rsplit("/", 1)[-1].replace(".", "")
@@ -56,7 +56,7 @@ def load_store(collection: str, strategy: str, backend: str = "faiss",
         # The table's vector column is sized here, before anything is embedded, so it has
         # to come from the same table Config.embed_dim reads. Taking the constructor
         # default instead would create vector(768) for a 384-dim model and reject every
-        # insert — with a Postgres error far from the line that chose the model.
+        # insert, with a Postgres error far from the line that chose the model.
         model = embed_model or DEFAULT_EMBED_MODEL
         return PgVectorStore(collection=index_name(collection, strategy, contextual,
                                                    embed_model, chunk_tokens),

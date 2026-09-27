@@ -2,7 +2,7 @@
 
 Embed each sentence, measure cosine distance between consecutive sentences, and start a
 new chunk wherever that distance exceeds the document's 90th percentile. The threshold
-is per-document on purpose — a fixed global threshold behaves differently on terse FOMC
+is per-document on purpose, a fixed global threshold behaves differently on terse FOMC
 statements than on sprawling Risk Factors sections.
 
 A token cap is still enforced, because a section that never changes topic would

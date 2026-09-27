@@ -9,8 +9,8 @@ Direction is per metric, not global: over_refusal_rate and the latency percentil
 worse when they go up. Getting that wrong would build a gate that congratulates you for
 refusing more questions.
 
-**On the threshold.** 0.03 on recall@16 sits inside this golden set's noise band — the
-95% CI is ±0.06 — so on two independent *generating* runs of the same config this would
+**On the threshold.** 0.03 on recall@16 sits inside this golden set's noise band, the
+95% CI is ±0.06, so on two independent *generating* runs of the same config this would
 fire on nothing but sampling. That is not a reason to widen it; it is a reason to compare
 runs that are actually comparable. The deterministic CI run (`--deterministic-only`, no
 generation and no LLM router) is reproducible to the digit, so any movement in it is a
@@ -31,8 +31,8 @@ ROOT = Path(__file__).resolve().parents[1]
 HISTORY = ROOT / "evals" / "history.jsonl"
 BASELINE = ROOT / "evals" / "baseline.json"
 
-# What a regression means for each. Everything not listed here is descriptive — n_questions,
-# the confidence bounds, cost — and comparing it would produce failures nobody can act on.
+# What a regression means for each. Everything not listed here is descriptive, n_questions,
+# the confidence bounds, cost, and comparing it would produce failures nobody can act on.
 TRACKED = {
     "recall_at_16": "higher",
     "recall_at_16_micro": "higher",
@@ -51,7 +51,7 @@ def latest(run_name_prefix: str | None, retrieve_only: bool | None = None) -> di
 
     The `retrieve_only` filter is not a convenience. The CI gate appends a retrieve-only
     entry to history on every push, so "the newest run" is almost never the generating run
-    a generating baseline should be compared against — and a retrieve-only run has no
+    a generating baseline should be compared against, and a retrieve-only run has no
     citation_validity and no abstention numbers, so half the table would be comparing a
     measurement against nothing. Matching the baseline's own kind picks the right row
     without hardcoding a run name that any config change would invalidate.

@@ -25,8 +25,8 @@ Discover in May 2025, so the ticker is delisted. Historical filings remain under
 and the most recent 10-K is FY2024 (filed 2025-02-20). Keeps the COF/DFS merger as a
 genuinely interesting multi-hop question.
 
-**10-K section extraction: 18/30 (60%).** Failures are perfectly per-company — all three
-years fail together — so this is heading convention, not parser flakiness. Three causes:
+**10-K section extraction: 18/30 (60%).** Failures are perfectly per-company, all three
+years fail together, so this is heading convention, not parser flakiness. Three causes:
 
 All 12 failures turn out to share **one root cause**: these four companies present the
 10-K as an annual-report narrative fronted by a "Form 10-K Cross-Reference Index." The
@@ -34,7 +34,7 @@ item headings appear exactly once, in that index, mapped to page ranges. The bod
 descriptive chapter titles (`Managing Global Risk`, `Risk Factors Relating to Our
 Business`) with no item anchors to regex against. There is nothing to match.
 
-My first diagnosis said C and SYF were regex-fixable — that was wrong, and checking the
+My first diagnosis said C and SYF were regex-fixable, that was wrong, and checking the
 body rather than the TOC is what disproved it.
 
 WFC and USB had a *second*, worse problem on top: their 10-K primary document is a thin
@@ -53,20 +53,20 @@ Two dedupe bugs, both silent, both found by checking *which* records disappeared
 than trusting the drop count.
 
 **`doc_id` was not unique.** `TICKER_FORM_DATE` collides because companies file several
-8-Ks on the same day — JPM did it repeatedly. 29 legitimate distinct filings were being
+8-Ks on the same day, JPM did it repeatedly. 29 legitimate distinct filings were being
 discarded as "duplicates." Fixed by appending the accession sequence:
 `JPM_8K_2026-07-23_000123`.
 
 **The 500-char prefix hash was destroying year-over-year sections.** This is the one that
 would have quietly ruined the evaluation. SEC sections open with identical stock language every
-year — *"The following discussion sets forth the material risk factors that could affect
-JPMorganChase's financial condition..."* — so hashing the first 500 characters made
+year, *"The following discussion sets forth the material risk factors that could affect
+JPMorganChase's financial condition..."*, so hashing the first 500 characters made
 FY2024, FY2025 and FY2026 Risk Factors look like the same document. Three years collapsed
 to one for JPM, BAC, and GS.
 
 The golden set allocates **8 temporal questions** ("how did X's credit language change
 from 2023 to 2025?"). Every one of them would have been unanswerable, and the failure
-would have looked like a retrieval problem rather than an ingestion problem — days of
+would have looked like a retrieval problem rather than an ingestion problem, days of
 debugging in the wrong place.
 
 Fixed by hashing full normalized text instead. Only *exact* duplicates are safe to drop
@@ -80,7 +80,7 @@ opening) but deliberately retained.
 | 8-K records | 261 | 295 |
 | Risk Factors years per company | 1 | 3 |
 
-Remaining 734 drops are all CFPB — exact-duplicate complaint narratives, genuinely
+Remaining 734 drops are all CFPB, exact-duplicate complaint narratives, genuinely
 redundant.
 
 **Corpus: 17,611 records, 77.6 MB** (403 EDGAR · 75 FOMC · 17,133 CFPB).
@@ -93,13 +93,13 @@ redundant.
 bisecting parameters one at a time against a known-good bare request.
 
 **Offset pagination is silently ignored.** `frm`, `from`, and `offset` all return the
-*identical* window — no error, no warning. Naive paging would have produced 5,000 copies
+*identical* window, no error, no warning. Naive paging would have produced 5,000 copies
 of the same 1,000 records. Deep paging requires the `search_after` cursor, formatted
 `{epoch_ms}_{complaint_id}` from the previous page's `sort` key. `size=5000` also works
 in a single request.
 
 **The sampling bug that mattered most.** The API sorts newest-first, so taking the first
-5,000 per product collapsed the sample to **2026-02-25 → 2026-07-29** — five months —
+5,000 per product collapsed the sample to **2026-02-25 → 2026-07-29**, five months,
 even though `date_received_min=2023-01-01` was set. The filter was doing nothing. Every
 temporal question in the golden set, and the whole multi-year premise of the
 disparity module, would have been built on five months of data.
@@ -125,7 +125,7 @@ ZCTA-level demographic join, but the effective sample for the geographic layer i
 
 **Silent encoding corruption in FOMC text.** federalreserve.gov serves UTF-8 but omits
 `charset` from the Content-Type header, so `requests` falls back to ISO-8859-1 per the
-HTTP spec. En dashes arrived as mojibake — `"approved by a 9 â 3 vote"` instead of
+HTTP spec. En dashes arrived as mojibake, `"approved by a 9 â 3 vote"` instead of
 `9 – 3`. Nothing errors; the corpus just quietly degrades, and the cache persisted the
 bad decode so a re-run wouldn't have healed it.
 
@@ -155,16 +155,16 @@ repeats: **row counts were correct the whole time; the text was wrong.**
 defaults to `separator=""`, so `UNITED STATES</div><div>SECURITIES` extracted as
 `STATESSECURITIES`. This hit **402 of 403 EDGAR docs** (48,901 glued tokens, 0.89% of all
 words) and every FOMC document. These tokens are unmatchable by BM25 and unrecoverable at
-query time — no tokenizer can split them back apart. Fixed with `separator=" "`.
+query time, no tokenizer can split them back apart. Fixed with `separator=" "`.
 
 **2. Inline-XBRL hidden fact blocks survived extraction.** Filings carry a hidden block of
 tagged facts (CIK, axis members, repeated dates, company name). It renders as nothing but
-extracted as a short, keyword-dense chunk — and BM25's length normalisation ranked those
+extracted as a short, keyword-dense chunk, and BM25's length normalisation ranked those
 *above* real prose. `"JPM CET1 ratio"` returned three cover-page metadata dumps as its top
 three hits.
 
 Filers hide it two ways and only one is reachable from CSS: **selectolax cannot select
-namespaced tags** — `css(r'ix\:hidden')` silently matches zero nodes rather than raising.
+namespaced tags**, `css(r'ix\:hidden')` silently matches zero nodes rather than raising.
 The `<ix:hidden>` form had to be stripped from the raw markup before parsing. Junk chunks:
 77 → 19 (style selector) → 6 (regex strip). The final 6 are genuine COF securities tables
 that slipped the table-drop heuristic, not boilerplate.
@@ -172,7 +172,7 @@ that slipped the table-drop heuristic, not boilerplate.
 **3. Fixing (1) broke every money figure.** Filers put the currency symbol, the digits and
 the closing paren of a negative in separate inline elements, so the separator that
 un-glued words also split `$1.2` into `$ 1.2` and `(1,234)` into `( 1,234 )`. 64,704 of
-84,579 dollar figures were affected — BM25 would have lost the exact amounts it is in the
+84,579 dollar figures were affected, BM25 would have lost the exact amounts it is in the
 pipeline to match.
 
 Nearly missed this. A naive `\$[0-9]` count showed a **76% drop** and looked like
@@ -184,24 +184,24 @@ pass. Verified by exact restoration: `$N` back to 84,579, `$ N` and `( N` to zer
 16,537 → 28,052.
 
 **Hypothesis I got wrong:** I predicted the separator bug was also what capped 10-K
-section extraction at 60%, since the item headings sit at block boundaries. Tested it —
+section extraction at 60%, since the item headings sit at block boundaries. Tested it:
 5/12 docs before, 5/12 after. No effect. The 60% remains the cross-reference-index problem
 documented above, and the two are unrelated.
 
 **Router bug, same session.** The keyword router used substring matching, so `"cre"` in
 `"credit card"` routed a pure complaints question to filings. The three-letter finance
 abbreviations (`cre`, `sec`, `eps`) are all substrings of common words. Switched to
-whole-token regex matching with an optional plural — whole-token alone was too strict,
+whole-token regex matching with an optional plural, whole-token alone was too strict,
 since real questions say "late fees", not "late fee".
 
 ---
 
-## First spot-check — 15 questions
+## First spot-check, 15 questions
 
 Ran 15 questions across all three sources (4 filings single-hop, 2 temporal, 2 FOMC,
 3 complaints, 1 cross-source, 3 designed to be unanswerable).
 
-**Citation validity: 15/15 clean.** Zero invented source numbers — no `[S9]` when only 8
+**Citation validity: 15/15 clean.** Zero invented source numbers, no `[S9]` when only 8
 sources existed, across every question. The numbered-source prompt is doing its job.
 
 **Abstention: 3/3 correct.** Tesla deliveries, Bitcoin price, and 2028 forward-looking NII
@@ -209,13 +209,13 @@ all returned the `INSUFFICIENT_CONTEXT:` sentinel rather than answering from gen
 knowledge. Over-refusal on answerable questions: 0/12.
 
 **Temporal handling was better than expected.** "How did JPM's CET1 ratio change between
-2024 and 2025?" retrieved only 2025 10-Qs — which looked like the classic wrong-fiscal-year
+2024 and 2025?" retrieved only 2025 10-Qs, which looked like the classic wrong-fiscal-year
 failure until I read the answer. The 2025 10-Qs carry December 31, 2024 comparatives, so it
 correctly reconstructed the full series (15.7% → 14.8%) and attributed the decline to RWA
 growth. Retrieving the "wrong" year was right; judging retrieval by document date alone
 would have scored this as a failure.
 
-### FAILURE — router sent a two-sided question to one collection
+### FAILURE, router sent a two-sided question to one collection
 
 *"Do banks discuss credit card late fees differently than consumers complain about them?"*
 
@@ -227,7 +227,7 @@ Two distinct defects, and the second is the dangerous one:
 
 1. **Router.** Keyword counting cannot see comparative intent.
 2. **Generation.** Given only complaint narratives, the model still produced a section
-   titled "How Banks Frame Late Fees" and asserted a "clear disconnect" — describing one
+   titled "How Banks Frame Late Fees" and asserted a "clear disconnect", describing one
    side of a comparison from evidence about the other side. It did not abstain, did not
    flag the missing half, and cited 7/8 sources, so **every mechanical signal said the
    answer was well-grounded.** Citation validity and abstention rate both looked perfect
@@ -242,10 +242,10 @@ router. Verified on 6 routing cases including two that must *not* escalate. Afte
 the same question returns a genuinely two-sided answer citing SYF's $2.7B/$2.5B late-fee
 income and the CFPB safe-harbor rule alongside the consumer narratives, 8/8 sources cited.
 
-The generation half is **not** fixed — the prompt does not require the model to check that
+The generation half is **not** fixed, the prompt does not require the model to check that
 it has evidence for every side of a comparison. Candidate prompt change.
 
-### Performance bug — store reloaded on every query
+### Performance bug, store reloaded on every query
 
 `load_store` was uncached while the BM25 index was cached, so every query re-read and
 re-parsed `meta.jsonl` (62 MB for complaints, 50 MB for filings). A two-collection query
@@ -255,7 +255,7 @@ Worth noting the FAISS design tradeoff this exposes: the flat index keeps a full
 the corpus text in memory to serve metadata, which is exactly the cost pgvector avoids on
 Deferred to the serving work.
 
-### Known measurement weakness — `uncited_sentences` over-counts
+### Known measurement weakness, `uncited_sentences` over-counts
 
 The metric flags any 5+ word sentence with no `[S#]` marker, which catches markdown
 headings ("Key Disconnect") and summary transitions. Q12 scored 10 uncited sentences when
@@ -364,7 +364,7 @@ is now `(doc_id, snippet)` with contiguous 10-gram matching plus a numeric-contr
 guard; `doc_id` is verified set-equal across all three strategies (460 docs).
 
 Bag-of-words overlap was tried first and produced 12/18 false positives on formulaic MD&A
-prose — and biased toward `sentence_window`, which has ~15x more chunks and therefore
+prose, and biased toward `sentence_window`, which has ~15x more chunks and therefore
 more chances to clear a bag-of-words threshold. That artifact would have won the chunking
 ablation on its own.
 
@@ -392,7 +392,7 @@ variation does not land three questions within a hair of the same number.
 That metric scores the *fraction* of supplied context that bears on the question. We supply
 `top_k_context=8` chunks and a typical question is answered by exactly one of them, so the
 achievable score is bounded near 1/8 = 0.125 no matter how good retrieval gets. The
-observed scores were at or above that ceiling — retrieval was doing as well as the metric
+observed scores were at or above that ceiling, retrieval was doing as well as the metric
 permits, while the threshold called it a failure.
 
 The general trap: contextual relevancy is **diluted by `top_k_context`** and therefore not
@@ -406,22 +406,22 @@ came back" rather than grading precision. Gate went green: 8 passed, 4 skipped, 
 ### End-to-end latency silently replacing retrieval latency in the ablation table
 
 `latency_ms` was defined as `retrieval_ms + generation_ms`. Every sweep cell was run
-`--retrieve-only`, so its p50 was pure retrieval — but the final generation run shares a
+`--retrieve-only`, so its p50 was pure retrieval, but the final generation run shares a
 config key with its retrieve-only twin, and the table's "widest run wins" tie-break would
 have let it take the winning cell carrying several seconds of Anthropic round-trip.
 
 Caught before it landed by noticing an existing generation run in `history.jsonl`:
 `semantic-hybrid-ragassmoke` reports p50 **7963ms** against **1751ms** for the identical
 retrieval config retrieve-only. The best row would have rendered as 4.5x slower than its
-neighbours — an argument against the winning config that the data does not support, with
+neighbours, an argument against the winning config that the data does not support, with
 no error anywhere.
 
 Fixed by reporting `p50/p95_retrieval_ms` separately and pointing the table at those. Two
 notes on the fix:
 
   - the runner now records `retrieve_only` explicitly rather than letting the table infer
-    it from a near-zero `cost_usd_per_query`. Retrieve-only runs are *not* free — the
-    router still makes an LLM call — so "cost is zero" was never the right test, and a
+    it from a near-zero `cost_usd_per_query`. Retrieve-only runs are *not* free, the
+    router still makes an LLM call, so "cost is zero" was never the right test, and a
     cost threshold would need re-tuning whenever the router or pricing changed;
   - the legacy fallback to the combined column is gated on `retrieve_only`, because for
     those runs `generation_ms` is 0 and the two figures are equal by construction. All 14
@@ -435,7 +435,7 @@ wrong conclusion waiting for whoever read the table.
 
 `src/finhelm/judge.py` paces requests to stay under **15 requests/minute**, which fixed the
 DeepEval gate. The Ragas pass on the final run then died at job 74 of 128, every remaining
-job surfacing as `TimeoutError()` — the same symptom as before, so the same fix looked like
+job surfacing as `TimeoutError()`, the same symptom as before, so the same fix looked like
 it should apply. It did not.
 
 A single probe call gave the real answer:
@@ -453,7 +453,7 @@ and this budget is spent over a day.
 
 The nastiest detail is that the 429 body says **"Please retry in 43.831872857s"** for the
 daily cap too. That hint is correct for the per-minute quota and actively wrong for this
-one — `_retry_after` parsed and honoured it, so the client burned all six attempts in four
+one, `_retry_after` parsed and honoured it, so the client burned all six attempts in four
 minutes and then raised "judge rate limited... lower rpm", pointing at the wrong quota.
 
 Fixed by discriminating the two, since they arrive as the same status code with the same
@@ -461,7 +461,7 @@ hint and demand opposite responses:
 
   - per-minute → pace and retry, as before;
   - per-day → raise `DailyQuotaExhausted` immediately, naming the model, stating that
-    retrying cannot help before the reset, and pointing at `.cache/ragas` — because Ragas
+    retrying cannot help before the reset, and pointing at `.cache/ragas`, because Ragas
     keys its cache on the prompt, a resumed pass replays already-scored rows for free and
     only pays for what failed.
 
@@ -475,7 +475,7 @@ day on one free key. Run the gate against a cached judge, or keep the two on sep
 ### The judge cache could not tell two judges apart
 
 Found while checking whether tomorrow's resumed Ragas pass would safely reuse the cache.
-It would — but only because the judge has not changed. `ragas.cache._generate_cache_key`
+It would, but only because the judge has not changed. `ragas.cache._generate_cache_key`
 builds its key like this:
 
 ```python
@@ -485,14 +485,14 @@ if inspect.ismethod(func):
 
 `self` is the LLM wrapper, and the wrapper is the only thing carrying the model. So the
 key is (function qualname, prompt, kwargs) and **the model is not in it**. Two different
-judges asked an identical question hash to one entry — confirmed directly: keys for
+judges asked an identical question hash to one entry, confirmed directly: keys for
 `gemini-3.1-flash-lite` and `gemini-3.5-flash` on the same prompt are byte-identical.
 
 This is fine for the case the cache was written for and wrong for the case this project
 keeps hitting. Three judge models were tried and rejected before the current one, and each
 of those switches would have replayed the previous judge's verdicts while
 `ragas_runner.py` wrote the *new* model's name into the output as `judge_model`. A
-mislabelled artifact is worse than a slow one — a slow run announces itself, and a number
+mislabelled artifact is worse than a slow one, a slow run announces itself, and a number
 attributed to the wrong judge does not.
 
 Fixed by partitioning the cache directory per model (`.cache/ragas/<judge_model>/`), which
@@ -501,12 +501,12 @@ fixing the key, but it works against the library as shipped instead of depending
 private function's behaviour staying put.
 
 The 242 entries already on disk were migrated into the `gemini-3.1-flash-lite` namespace
-rather than discarded — they are all from that model, and they represent roughly half a
+rather than discarded: they are all from that model, and they represent roughly half a
 day's quota.
 
 `tests/test_ragas_cache.py` pins both halves. The collision test asserts that the keys
 *do* collide, so that if a future ragas release starts including the model, the test fails
-and says the directory split is now redundant — rather than leaving behind a workaround
+and says the directory split is now redundant, rather than leaving behind a workaround
 nobody remembers the reason for.
 
 ### MPS embedding throughput collapses 38x over a long encode
@@ -533,7 +533,7 @@ whose runs share mutable process state is measuring the order, not the variable.
 
 Fixed in `src/finhelm/embeddings.py`: `_encode_all()` blocks the encode at
 `MPS_FLUSH_EVERY = 8192` and calls `torch.mps.empty_cache()` between blocks. CUDA and CPU
-take the single-call path unchanged — neither shows the decay, and blocking there would
+take the single-call path unchanged, neither shows the decay, and blocking there would
 only add overhead and fragment the progress bar.
 
 Blocked and unblocked outputs are not bit-identical (max abs difference 2.086e-07) because
@@ -542,8 +542,8 @@ unit-norm and cosine ranking is unaffected.
 
 ### sentence_window was scored through the entire ablation without its windows
 
-`chunking/sentence_window.py` states the design plainly — index one sentence for embedding
-precision, splice the ±3 neighbours back in so the reader sees coherent context — and
+`chunking/sentence_window.py` states the design plainly, index one sentence for embedding
+precision, splice the ±3 neighbours back in so the reader sees coherent context, and
 ships an `expand()` that does it. Nothing ever called it. Not retrieval, not generation,
 not the eval harness.
 
@@ -553,7 +553,7 @@ whether a retrieved chunk contains a contiguous 10-word run of the gold span; th
 sentence_window row was answering that question with about a ninth of the text width. It
 lost, and the loss looked like a finding about chunking.
 
-Correcting it moves the row up across the board — 12 hits gained, 0 lost:
+Correcting it moves the row up across the board, 12 hits gained, 0 lost:
 
     cell                        before   after
     sentence_window-dense        0.204   0.241
@@ -562,14 +562,14 @@ Correcting it moves the row up across the board — 12 hits gained, 0 lost:
     sentence_window-hybrid-rr    0.269   0.315
     sentence_window-bm25-rr      0.269   0.296
 
-The conclusion survives — `semantic-hybrid-rr` still wins at 0.389 — but it survives on a
+The conclusion survives, `semantic-hybrid-rr` still wins at 0.389, but it survives on a
 fair comparison now instead of a rigged one, and the margin over sentence_window is 0.074
 rather than the 0.120 originally recorded.
 
 **The near-miss is the part worth keeping.** The first attempt at measuring the impact
 said expansion made recall *worse* (0.269 -> 0.222), which is impossible: a window
 contains its own sentence, so it can only add n-gram matches. That impossibility was the
-only reason it got a second look. The cause was in the measurement script — it keyed the
+only reason it got a second look. The cause was in the measurement script, it keyed the
 sentence list on `doc_id`, but `chunk_doc()` runs per *(document, section)*, so for the 15
 of 460 filings carrying more than one section the sentence lists were interleaved and the
 window was sliced out of the wrong section. It produced real sentences from the real
@@ -577,21 +577,21 @@ filing, just the wrong ones, and raised nothing. Had the sign come out merely sm
 instead of negative, it would have been believed.
 
 Fixed in `src/finhelm/retrieve/window.py`, which expands *after* reranking so that both
-the bi-encoder and the cross-encoder still score the bare sentence — that precision is the
+the bi-encoder and the cross-encoder still score the bare sentence, that precision is the
 entire reason to use this strategy. Expansion is keyed per hit, so a result set that mixes
 `filings` (sentence_window) with `complaints` (fixed fallback) needs no special casing.
 
 `tests/test_sentence_window_expansion.py` pins the section-keying bug, the
 must-not-mutate-BM25's-cached-records constraint, and the monotonicity of `is_hit` under
-expansion — the last because `_contradicts()` is a genuinely non-monotonic path (a window
+expansion, the last because `_contradicts()` is a genuinely non-monotonic path (a window
 drags in neighbouring figures the lone sentence did not have), so "expansion cannot lose a
 hit" is an assumption that deserves a test rather than an argument.
 
-### Failure taxonomy — `semantic-hybrid-rr`, 54 answerable + 21 negative
+### Failure taxonomy, `semantic-hybrid-rr`, 54 answerable + 21 negative
 
 Produced by `scripts/failure_taxonomy.py`, which is a script and not a tally in this file
 because the next round of work exists to move these numbers. Each failure is charged to its *earliest*
-cause — routing, then retrieval, then the abstention decision, then synthesis — because
+cause, routing, then retrieval, then the abstention decision, then synthesis, because
 the categories overlap and independent counts produce a table that sums past 100% and
 cannot be used to prioritise.
 
@@ -607,19 +607,19 @@ cannot be used to prioritise.
 correct and cited. See the q055 entry above.)
 
 **Retrieval is the whole problem: 29 of 54, 54%.** Everything else is a rounding error
-next to it. The next round of work should spend its budget on recall — query expansion, better fusion, more
-candidates before rerank — and not on the generator or the abstention threshold.
+next to it. The next round of work should spend its budget on recall, query expansion, better fusion, more
+candidates before rerank, and not on the generator or the abstention threshold.
 
 Three things this separation makes visible that the aggregate metrics hide:
 
 *`over_refusal_rate` reads 0.407 and the real figure is 2.* Twenty-two positives abstained,
 which looks like a badly-tuned abstention threshold. But 20 of those 22 abstained because
-retrieval returned nothing — that is the system declining to invent an answer, which is the
+retrieval returned nothing: that is the system declining to invent an answer, which is the
 behaviour the negatives exist to reward. Only 2 refused while actually holding the gold
 span. Tuning the threshold on the 0.407 figure would trade the system's one genuinely good
 property against a problem it does not have.
 
-*Synthesis is not a failure mode here — 0 cases.* Of the 13 answers where the gold span
+*Synthesis is not a failure mode here, 0 cases.* Of the 13 answers where the gold span
 quantified something and the system both retrieved it and answered, all 13 carried at
 least one gold figure. Stated as a floor rather than a verdict, since the check is figure
 agreement and not a judge, but the direction is unambiguous: when this system has the right
@@ -631,7 +631,7 @@ aggregate in the harness isolates them. `recall@5` counts them as misses and
 `over_refusal_rate` ignores them entirely.
 
 **Temporal is the weakest question type: 6 of 8 fail** (q047, q049, q050, q051, q053,
-q054), and 5 of those 6 are retrieval misses rather than date confusion — the comparison
+q054), and 5 of those 6 are retrieval misses rather than date confusion, the comparison
 spans two filings and retrieval surfaces at most one. Multi-hop is nearly as bad: 10 of 12
 fail, again dominated by retrieval. Both are the same underlying shortfall, that a single
 query embedding cannot fetch both halves of a comparison, which is the argument for the
@@ -640,7 +640,7 @@ the decomposition step.
 Counting method and its limits are documented in the script's docstring. The one worth
 repeating: `misrouted()` compares `set(expected_source) & set(route)`. An earlier ad-hoc
 version wrote `expected_source not in route`, comparing a list against list *members*, and
-reported 67 of 75 misrouted — a number that contradicted the harness's own route_accuracy
+reported 67 of 75 misrouted, a number that contradicted the harness's own route_accuracy
 of 0.955 and was believed for several minutes anyway.
 
 ### Every MLflow run in the project was logged to macOS AirPlay
@@ -659,7 +659,7 @@ which answers an unknown POST with **403 Forbidden**:
 That is the entire reason this survived two days. A missing server gives
 `ConnectionRefusedError`, which reads as "nothing is there" and gets fixed in a minute. A
 403 reads as "the server is there and is rejecting me", which reads as an auth problem
-with something that exists — and the handler printed it as one dim parenthetical:
+with something that exists, and the handler printed it as one dim parenthetical:
 
     (mlflow logging failed, result still saved: ... error code 403 != 200)
 
@@ -669,7 +669,7 @@ per-question progress every time.
 Two failures, and the second is mine rather than Apple's:
 
 *Catching the exception was right; whispering was not.* The comment on the handler says
-tracking must never fail a paid eval run, and that is correct — losing a $1.19 run to a
+tracking must never fail a paid eval run, and that is correct, losing a $1.19 run to a
 telemetry hiccup would be worse. But "non-fatal" was implemented as "invisible". The
 handler is now loud, prints the resolved tracking URI, and names the recovery script.
 
@@ -698,7 +698,7 @@ Two smaller things fell out of the same investigation:
 
 The post-mortem produced a plan with a ranked set of fixes. Measuring them changed
 the ranking, and in two cases inverted it. Recording the predictions next to the outcomes,
-because the pattern — plausible mechanism, measurable, and wrong — is the point.
+because the pattern, plausible mechanism, measurable, and wrong, is the point.
 
 ### Prediction 1: "pool starvation is the dominant lever". Wrong.
 
@@ -720,7 +720,7 @@ The pool was never the binding constraint. Feeding the cross-encoder three to fi
 more candidates hands it more distractors and it does not find more gold. The position
 data says why: when reranking works it puts the gold chunk at **rank 1** (14 of 27 hits at
 k=20), and recall@8 is barely above recall@5 (0.365 vs 0.351). The reranker is not nearly
-right and short of context — it is binary. Either it recognises the passage or it does not,
+right and short of context: it is binary. Either it recognises the passage or it does not,
 and pool width does not change which.
 
 Corollary worth keeping: **pool recall is a ceiling, not a forecast.** It bounds what the
@@ -729,7 +729,7 @@ selector could retrieve, and says nothing about what it will.
 ### Prediction 2: "contextual headers are the highest expected value change". Not shown.
 
 Chunks carry no issuer, form, period or section, and 48% of missed spans came from a
-document retrieval had already surfaced — so prepending that metadata before embedding
+document retrieval had already surfaced, so prepending that metadata before embedding
 should separate near-identical filings. Both indexes were built (`*_ctx`, kept beside the
 originals so the comparison stays an A/B rather than a one-way door).
 
@@ -740,7 +740,7 @@ originals so the comparison stays an A/B rather than a one-way door).
     2 questions gained, 1 lost
 
 Not distinguishable. MRR moved more than recall, which is consistent with headers helping
-rank an already-retrieved passage rather than retrieving a new one — but on 54 questions
+rank an already-retrieved passage rather than retrieving a new one, but on 54 questions
 that reading is a hypothesis, not a result. Kept off by default; the flag and the index
 both survive so it can be re-tested on a larger set.
 
@@ -751,7 +751,7 @@ passages throughout the ablation. Dismissed in the plan as worth "~3 spans". Mea
 config, prefix off vs on: 0.3889 -> 0.4167, +0.0278, 95% CI [+0.0000, +0.0741], 2 gained,
 **0 lost**.
 
-Still not distinguishable at this sample size — but it is the same magnitude as the two
+Still not distinguishable at this sample size, but it is the same magnitude as the two
 changes that were predicted to be large, it never loses a question, and it costs nothing.
 The ranking of "big" and "small" fixes was not supported by any measurement when it was
 written.
@@ -761,14 +761,14 @@ written.
 Every change measured this session lands between +0.018 and +0.028 with a 95% interval
 spanning roughly +/-0.06. That is not a coincidence about the changes; it is the resolution
 limit of a golden set with 74 gold spans. At p ~ 0.4 the Wilson interval on the headline
-number is [0.252, 0.465] — wide enough to contain the top six rows of the ablation.
+number is [0.252, 0.465], wide enough to contain the top six rows of the ablation.
 
 **The 18-cell ablation could not distinguish its own top six configurations**, and neither
 can any of this work. Reporting a winner from it was over-claiming.
 
 Both are now reported rather than left implicit: `wilson()` and `bootstrap_paired()` in
 `evals/metrics.py`, a CI column in the ablation table, and `n_gold_spans` in every summary.
-The paired bootstrap is the one to use for comparisons — both configs answer identical
+The paired bootstrap is the one to use for comparisons, both configs answer identical
 questions, so pairing removes the question-difficulty variance that dominates the
 independent intervals.
 
@@ -785,7 +785,7 @@ deleted.)
 ### Temporal questions: date filtering was the wrong fix
 
 The first idea was metadata date-filtering for the 8 temporal questions (6 of which fail).
-Reading them first: **every one spans two documents from different periods** — two gold
+Reading them first: **every one spans two documents from different periods**, two gold
 docs, years apart, in all 8. A date filter would guarantee missing half of every one of
 them. They are structurally multi-hop, so decomposition is the right mechanism and the
 filter idea was dropped before being built.
@@ -799,13 +799,13 @@ Four separate ways a job "started and nothing happened", all in one session:
     timing taken beside it.
   * Piping a build through `grep` block-buffers its output to a file, so a job that is
     working looks identical to one that is wedged.
-  * Killing an MPS job can leave the next one crawling at ~4% speed — 32 seconds of CPU in
+  * Killing an MPS job can leave the next one crawling at ~4% speed, 32 seconds of CPU in
     14 minutes. A clean restart embedded the same chunks in under a minute.
   * FAISS and a second CrossEncoder in one process aborts in native code with no traceback
     and a leaked-semaphore warning. The real pipeline never does this; benchmark scripts do.
 
 What works: `python -u` writing straight to a log file, no pipes, and progress
-verified by log growth rather than by `%cpu` — which understates MPS work badly enough to
+verified by log growth rather than by `%cpu`, which understates MPS work badly enough to
 read as stalled.
 
 ## Question design was not the problem; span count was
@@ -815,17 +815,17 @@ recall partly measured question style rather than retrieval. The first cut suppo
 recall by question-length tertile ran 0.556 / 0.500 / 0.194, a 2.9x spread.
 
 Controlling for question type destroyed it. *Within* each type the length effect is gone:
-multi_hop +0.000, single_hop -0.059, temporal +0.375 — the last in the wrong direction
+multi_hop +0.000, single_hop -0.059, temporal +0.375, the last in the wrong direction
 entirely. Length was proxying for something else.
 
     1 gold span   n=34   recall 0.559
     2 gold spans  n=20   recall 0.175
 
 That 3.2x gap is the whole finding. It is not about phrasing. All 20 two-span questions
-span two different documents, and 70% of them retrieve *neither* side — only 5% get both.
+span two different documents, and 70% of them retrieve *neither* side, only 5% get both.
 
 The crowding explanation is also wrong. When one side is found, its document holds 1.00 of
-the 5 context slots, not 4 — the other slots go to documents that are neither target. A
+the 5 context slots, not 4, the other slots go to documents that are neither target. A
 single query vector lands on generic vocabulary matches instead of either specific filing.
 
 Corollary for the metric: pooled recall says as much about the *mix* of question types in
@@ -838,18 +838,18 @@ helps comparisons is visible even when it moves the pooled average by nothing.
 First agentic run reported "decomposition fired on 0/54 questions" while cost per query had
 gone from $0.0001 to $0.0007 and p50 latency from 1610ms to 3525ms. Both facts cannot be
 true. `run_eval`'s retrieve-only branch never recorded `sub_questions`, so the check was
-reading a field that is always empty — the same class of error as scoring the pool on
+reading a field that is always empty, the same class of error as scoring the pool on
 doc_id and calling it span presence.
 
 Probed directly, decompose splits 8/8 multi-span questions and the splits are good: each
 names company, metric and period explicitly. It now fires on 53/54 and is recorded.
 
 Two hypotheses died here:
-  - "rerank undoes decomposition by re-scoring against the original compound question" —
+  - "rerank undoes decomposition by re-scoring against the original compound question":
     false. agentic+rerank scores 0.225 on multi-span against agentic-no-rerank's 0.200,
     and rerank is worth +0.157 pooled. Rerank is the single most valuable component
     measured so far.
-  - "a wider candidate pool recovers the missing side" — false, measured earlier.
+  - "a wider candidate pool recovers the missing side", false, measured earlier.
 
 ## The real finding: every experiment on this golden set is underpowered
 
@@ -861,13 +861,13 @@ with 95% confidence and 80% power:
     effect 0.10 ->   97
     effect 0.05 ->  385     <- the size of every effect measured so far
 
-There are 20. Nothing measured this session — query prefix, contextual headers, pool width,
-decomposition — produced an effect larger than 0.05, and none of them could have been
+There are 20. Nothing measured this session, query prefix, contextual headers, pool width,
+decomposition, produced an effect larger than 0.05, and none of them could have been
 resolved if it had. The first ablation ranked 18 cells on gaps smaller than this.
 
 The actionable form: ~45 multi-span questions makes effects of 0.15+ resolvable, which is
 a realistic authoring target. Chasing 0.05 effects needs 385 and is not worth it. So the
-strategy is to stop tuning for small gains and look for a large one — the untested
+strategy is to stop tuning for small gains and look for a large one, the untested
 candidate being the embedding model, since bge-small-en-v1.5 has 384 dimensions to
 separate ten banks' near-identical MD&A prose.
 
@@ -884,8 +884,8 @@ A doubling, 3.5x larger than any other effect measured. It was invalid. A two-wa
 gets 10 slots that way and a four-way split gets 20, against 5 for the baseline. The test
 varied context budget and query shape together and attributed the result to query shape.
 
-Implemented properly — round-robin quota at an equal 5-slot budget, each pool reranked
-against its own sub-question — it loses on every tier:
+Implemented properly (round-robin quota at an equal 5-slot budget) each pool reranked
+against its own sub-question, it loses on every tier:
 
                         all     single   multi
     baseline          0.4167    0.5588   0.1750
@@ -898,12 +898,12 @@ Reverted. Two things worth keeping from it:
     like. It beats per-sub-question reranking, and rerank remains the single most valuable
     component measured (+0.157 pooled).
   - decompose splits 53 of 54 questions, including single-fact ones. That is why the
-    allocation hurt single-span questions worst — it dilutes a budget across sub-questions
+    allocation hurt single-span questions worst, it dilutes a budget across sub-questions
     that were never needed. Any future work here has to gate on the split being warranted,
     which is a cheaper and more promising change than anything tried today: decomposition
     is currently paying 2.9x latency and 7x cost on every question to help a fifth of them.
 
-The pattern this repeats — verified three times this session — is that a plausible number
+The pattern this repeats, verified three times this session, is that a plausible number
 with no exception attached is the most dangerous output this project produces. doc_id
 mistaken for span presence, an empty sub_questions field read as "decomposition never
 ran", and now budget mistaken for query shape. All three produced believable numbers.
@@ -911,8 +911,8 @@ ran", and now budget mistaken for query shape. All three produced believable num
 ## Gating decomposition: identical recall, half the cost and latency
 
 decompose was splitting 53 of 54 answerable questions, including single-fact ones it
-"split" into near-paraphrases. A deterministic pre-check now runs first — two issuers
-named, comparative phrasing, or two distinct periods — and only then is the model asked.
+"split" into near-paraphrases. A deterministic pre-check now runs first, two issuers
+named, comparative phrasing, or two distinct periods, and only then is the model asked.
 
     config                    all    single   multi    p50 ms   $/query
     baseline (no agentic)   0.4167   0.5588  0.1750      1351    0.0001
@@ -926,7 +926,7 @@ Paired delta against ungated is exactly 0.0000 on every tier, CI [0.0000, 0.0000
 This is the first unambiguous win of the audit, and the reason is methodological rather
 than lucky. Recall on this golden set has a resolution floor of about 0.15; cost and
 latency have almost no variance at all. Optimising the thing you can actually measure
-beats optimising the thing you care about but cannot resolve — and here they did not
+beats optimising the thing you care about but cannot resolve, and here they did not
 conflict, because the question was never "does decomposition help?" but "does it need to
 run every time?"
 
@@ -934,7 +934,7 @@ Two bugs fell out of building it, both found by tests written against the gate:
 
   * The router's `_COMPARATIVE` pattern matched compare/compared but not *comparing*,
     *comparison* or *contrasting*. The participle fails the trailing (?!\w) boundary and
-    the noun form was simply absent. This was never a decomposition bug — that regex also
+    the noun form was simply absent. This was never a decomposition bug, that regex also
     forces two-collection routing, so "Comparing X with Y" was being routed one-sided.
     Fixing it lifted gate coverage from 18/20 multi-span to 20/20.
   * Deriving issuer aliases from company names manufactures generic finance vocabulary:
@@ -947,7 +947,7 @@ Two bugs fell out of building it, both found by tests written against the gate:
 ## The embedding-model test is set up but not run (environment, not code)
 
 Index identity now includes the embedding model, so `bge-base` builds alongside `bge-small`
-rather than overwriting it — vectors from two models are not comparable, and if their
+rather than overwriting it, vectors from two models are not comparable, and if their
 dimensionality happened to match, loading the wrong one would return confident nonsense
 instead of raising.
 
@@ -956,17 +956,17 @@ instead of raising.
 
 Three attempts did not finish:
 
-  * MPS, batch 128 — process alive in uninterruptible wait (state U), 2 minutes of CPU
+  * MPS, batch 128, process alive in uninterruptible wait (state U), 2 minutes of CPU
     over 10 minutes of wall clock.
-  * MPS, batch 64 — same, 23 seconds of CPU over 8 minutes.
-  * CPU, batch 32 — genuinely progressing (state R, CPU time accruing at ~1:1) but the
+  * MPS, batch 64, same, 23 seconds of CPU over 8 minutes.
+  * CPU, batch 32, genuinely progressing (state R, CPU time accruing at ~1:1) but the
     measured rate is 7.2 s per 32-chunk batch over 771 batches, i.e. ~92 minutes.
 
 The MPS degradation is environment state, not a code fault: the contextual-header index
 built normally on MPS earlier in the same session, and the machine only started wedging
 after several embedding processes had been killed mid-run. A fresh process on a clean GPU
 state should take 2-3 minutes. Diagnosis note for next time: `ps -Ao pid,time,stat` on the
-*python* process, not the zsh wrapper — the wrapper always reads 0:00.00 and 0MB RSS, which
+*python* process, not the zsh wrapper, the wrapper always reads 0:00.00 and 0MB RSS, which
 looks exactly like a dead process and led to one wrong "wedged" call here. State U with
 flat CPU time is the wedge; state R with accruing CPU time is merely slow.
 
@@ -977,8 +977,8 @@ set's ~0.15 resolution floor.
 
 Mechanical checks first, since they are cheap and rule out whole classes of problem:
 
-  * All 174 gold spans are findable in the corpus (ceiling 1.0000). Partly circular — the
-    questions were drafted *from* chunks — so this verifies the pipeline preserved the
+  * All 174 gold spans are findable in the corpus (ceiling 1.0000). Partly circular, the
+    questions were drafted *from* chunks, so this verifies the pipeline preserved the
     spans, not that the questions are good.
   * No lexical leakage. Question/snippet content overlap is 0.286 median against 0.321 for
     the existing set, and long shared runs appear in 11% of spans against 18%. The drafts
@@ -987,13 +987,13 @@ Mechanical checks first, since they are cheap and rule out whole classes of prob
     mismatches, no duplicate or near-duplicate questions.
   * **75 of the 127 ids collided with existing ids.** The drafts restart numbering at q001,
     so q001-q075 named entirely different questions from the ones already in the set.
-    Result files are keyed by question id, so merging as-is would not have errored — it
+    Result files are keyed by question id, so merging as-is would not have errored, it
     would have silently rewritten the meaning of every historical per-question comparison.
     Renumbered to q076-q202.
 
 Reading them surfaced one real validity problem: some multi-hop questions yoke two
 arbitrary facts. q081 asked how DFS defines tangible common equity *and* how AXP defines
-reserve build — unrelated metrics no analyst would pair. q083 compared "the scale of" a
+reserve build, unrelated metrics no analyst would pair. q083 compared "the scale of" a
 $40bn buyback against a $1.1bn FDIC accrual, which is not a comparison.
 
 Quantified by content overlap between the two gold snippets, pairs sharing under 10%:
@@ -1001,7 +1001,7 @@ Quantified by content overlap between the two gold snippets, pairs sharing under
     existing golden set   9/20  (45%)
     new drafts           25/47  (53%)
 
-So this is not a defect the drafts introduce — it is how the whole benchmark was generated,
+So this is not a defect the drafts introduce: it is how the whole benchmark was generated,
 and it partly explains the 0.175 multi-span recall: half of those questions have no shared
 vocabulary linking the two spans, so no single query can retrieve both. Worth recording as
 a limitation of the benchmark rather than a reason to reject the drafts, which are
@@ -1030,16 +1030,16 @@ the 43 needed to resolve 0.15.
 The expanded run reported recall_at_5 = 0.4061 next to a CI of [0.2865, 0.4038]. The point
 estimate sat outside its own interval, which should be impossible.
 
-The two numbers described different quantities. `recall_at_5` is a *macro* average — the
-mean of per-question recall, weighting a two-span question the same as a one-span one —
+The two numbers described different quantities. `recall_at_5` is a *macro* average, the
+mean of per-question recall, weighting a two-span question the same as a one-span one,
 while the Wilson interval was computed on the *micro* rate, spans-found over spans-total.
 They coincide only when every question carries the same number of spans, which was nearly
 true at n=74 and stopped being true once 47 two-span questions were merged.
 
 Fixed by giving the macro estimate a bootstrap over questions, which is its actual sampling
 distribution, and reporting the micro rate with its Wilson interval alongside. Both are
-informative — macro is "how does the system do on an average question", micro is "what
-fraction of the evidence does it retrieve" — and the gap between them (0.406 vs 0.343)
+informative, macro is "how does the system do on an average question", micro is "what
+fraction of the evidence does it retrieve", and the gap between them (0.406 vs 0.343)
 measures how much of the difficulty is concentrated in multi-span questions.
 
 A number outside its own interval is worse than reporting no interval at all, because it
@@ -1071,9 +1071,9 @@ of 21 negatives are correctly refused.
 `over_refusal_rate` reads 0.3646 and again does not mean what it says: only 14 of the 87
 questions that actually held the gold span were refused. The rest are the system correctly
 declining to answer from evidence it never retrieved. That is the right behaviour and
-should not be tuned away — the abstention threshold is not the problem, recall is.
+should not be tuned away: the abstention threshold is not the problem, recall is.
 
-Two negatives still get confident fabricated answers, q055 and q075 — the same two as
+Two negatives still get confident fabricated answers, q055 and q075, the same two as
 the harness, and q055 remains the deliberate strict xfail in the PR gate. (Later: q055's
 answer was correct and its label wrong; see the q055 entry. The xfail is gone.)
 
@@ -1091,7 +1091,7 @@ The identical change measured +0.0185 [-0.019, +0.065] on the old 74-span set an
 correctly recorded as unresolvable. Nothing about the change improved; the instrument did.
 This is the clearest possible argument for having spent the time on the golden set rather
 than on more tuning, and it retroactively casts doubt on the other small effects rejected
-earlier — the BGE prefix in particular is worth re-measuring at n=248.
+earlier, the BGE prefix in particular is worth re-measuring at n=248.
 
 The gain is concentrated in single-span questions, which fits the mechanism: a header names
 issuer, form, period and section, so it disambiguates *which* filing a passage came from.
@@ -1120,7 +1120,7 @@ Rebuilt the contextual indexes with `BAAI/bge-base-en-v1.5` (768-dim) against
 
 The two interventions are complementary rather than competing, and each moves exactly the
 tier its mechanism predicts. A contextual header names issuer, form, period and section, so
-it disambiguates *which* filing a passage came from — that is a single-span problem, and it
+it disambiguates *which* filing a passage came from: that is a single-span problem, and it
 does nothing measurable for multi-span. A larger embedding model gives finer discrimination
 between the near-identical passages that two-document comparisons have to separate, and it
 does nothing for single-span, where the header had already resolved the ambiguity.
@@ -1135,7 +1135,7 @@ combined). bge-large was ruled out on this hardware at ~75 min for the same corp
 ### MPS decay, second occurrence
 
 The first bge-base build passed 15 minutes without reaching the 8192-chunk checkpoint that
-`bge-small` clears in under a minute, on a verified-clean GPU — so this was not leftover
+`bge-small` clears in under a minute, on a verified-clean GPU, so this was not leftover
 state from killed processes, which had been the explanation the first time. Isolated
 throughput measurement:
 
@@ -1143,13 +1143,13 @@ throughput measurement:
     bge-base   mps  29.4 chunks/s     bge-base   cpu   9.0 chunks/s
 
 MPS is the correct device and bge-base is genuinely ~3x the work. But 29.4 chunks/s
-predicts 8192 in 4.6 minutes, and the real build was far past that — so decay was still
+predicts 8192 in 4.6 minutes, and the real build was far past that, so decay was still
 happening *inside* a single flush window. `MPS_FLUSH_EVERY` is a memory budget rather than
 a count, and a 768-dim model puts roughly twice the allocator pressure through the same
 window. Lowering it 8192 -> 2048 held a steady 22 chunks/s across the entire 43k-chunk
 build with no collapse.
 
-## The architecture, not the model — and I aimed the first fix at the wrong stage
+## The architecture, not the model, and I aimed the first fix at the wrong stage
 
 Tripling the embedding model moved the pooled number by +0.008, which is the shape of a
 result where something downstream is discarding what the model improved. It was, but not
@@ -1193,7 +1193,7 @@ Multi-span gold spans, 134 of them across 67 questions:
 
 `rerank(query, candidates, ...)` scores every candidate against the *original compound
 question*. Asked which passages best answer a string naming two facts, a cross-encoder
-correctly prefers passages moderately about both — never the one that decisively answers
+correctly prefers passages moderately about both, never the one that decisively answers
 half. So a third of the gold spans that retrieval successfully found are discarded at the
 last step, by a component doing exactly what it was asked to do.
 
@@ -1236,7 +1236,7 @@ the corpus as distractors before ranking begins. Comparisons keep both halves co
 the pool regardless of how each half was retrieved, which is why the tier the argument was
 aimed at is the one it left alone.
 
-Two failed predictions in a row on the same tier — the RRF fix and this — is the useful
+Two failed predictions in a row on the same tier, the RRF fix and this, is the useful
 pattern. Multi-span recall has not moved beyond noise under any intervention: RRF
 replacement +0.0075, per-sub-question rerank +0.0299 [-0.0373, +0.0970], filtering -0.0149.
 Whatever makes a two-document question hard is not in the ranking or selection stages,
@@ -1244,7 +1244,7 @@ because changes to both have now been tried and neither moved it.
 
 ### Per-sub-question reranking: not resolved, but free latency
 
-+0.0299 on multi-span with [-0.0373, +0.0970] — 11 questions improved, 8 regressed, which
++0.0299 on multi-span with [-0.0373, +0.0970], 11 questions improved, 8 regressed, which
 is churn rather than a mechanism. The diagnosis that predicted it (33% of multi-span gold
 spans sat in the pool and were dropped by a reranker scoring against the compound original)
 was measured and correct; fixing the mismatch still did not convert those spans.
@@ -1253,7 +1253,7 @@ What did resolve is latency: p50 retrieval 4440 ms -> 2995 ms, a 33% cut, becaus
 pools of 20 are reranked separately rather than one merged pool of 60 being reranked whole.
 Worth keeping for that alone, and it costs single-span 0.0088 which is inside noise.
 
-### A silent process death, again — and it was never a code bug
+### A silent process death, again, and it was never a code bug
 
 The `--filter-by-issuer` run without per-sub-question reranking stopped at question 168 of
 202 with no traceback, no error and no exit marker, and a retry died at question 43. I
@@ -1262,15 +1262,15 @@ the same process", which is the explanation this file had already reached for tw
 It was wrong both times.
 
 Running the same path in the foreground returned **exit code 137**. That is 128+9: SIGKILL.
-Nothing crashed — macOS killed the process under memory pressure, which is why there was no
+Nothing crashed: macOS killed the process under memory pressure, which is why there was no
 traceback to find. The absence of an error message was the evidence, and I read it as a
 mysterious native fault rather than as the signature of a process that never got to handle
 its own death.
 
 Measured peak RSS through the identical path, both collections resident, six multi-hop
 questions: **1697 MB, and flat.** On 8 GB that is not close to a limit. The config was never
-the problem. What was: several memory-heavy Python processes of my own running at once —
-an eval, an analysis script, a benchmark — on a machine with 8 GB shared between CPU and
+the problem. What was: several memory-heavy Python processes of my own running at once:
+an eval, an analysis script, a benchmark, on a machine with 8 GB shared between CPU and
 MPS.
 
 The operational rule is dull and would have saved two failed runs and a wrong diagnosis:
@@ -1300,8 +1300,8 @@ filtering gets there first by never admitting the distractors that reranking was
 asked to sort back out.
 
 `filter_by_issuer` is now on by default. Unlike contextual headers it depends on no
-prebuilt artifact — `filters_for` returns None whenever a question names zero or several
-issuers, so a corpus with no tickers simply never filters — and leaving a +0.047 effect
+prebuilt artifact, `filters_for` returns None whenever a question names zero or several
+issuers, so a corpus with no tickers simply never filters, and leaving a +0.047 effect
 behind a flag is a footgun. The run-name suffix is inverted accordingly: `-noflt` marks
 the control arm.
 
@@ -1321,11 +1321,11 @@ filter can usefully narrow.
 Single-span has moved from 0.5439 to 0.6667 and every step of that is a resolved effect.
 Multi-span has moved from 0.2015 to 0.3209 and almost none of it is: the only intervention
 that resolved there was the embedding model. Four separate attempts to fix multi-span in
-the ranking and selection stages — RRF replacement, per-sub-question rerank, per-sub-
-question filtering, and pool widening before that — have all returned noise. The remaining
+the ranking and selection stages, RRF replacement, per-sub-question rerank, per-sub-
+question filtering, and pool widening before that, have all returned noise. The remaining
 difficulty is not in how candidates are ordered or chosen.
 
-## Widening a filtered pool makes multi-span worse — and that is the finding
+## Widening a filtered pool makes multi-span worse, and that is the finding
 
 the ablation rejected pool widening on an unfiltered pool, where k=50 admits distractors from
 every issuer. With issuer filtering the pool is high-precision, so widening should admit
@@ -1342,8 +1342,8 @@ Multi-span got *worse*, at 3.7x the latency. Adding candidates that are known to
 gold spans reduced the number of gold spans in the final context.
 
 That is not a null result, it is a diagnosis. Six interventions have now been aimed at
-multi-span — pool widening (twice), RRF replacement, per-sub-question rerank, per-sub-
-question filtering, per-sub-question budget allocation — and the only one that ever
+multi-span, pool widening (twice), RRF replacement, per-sub-question rerank, per-sub-
+question filtering, per-sub-question budget allocation, and the only one that ever
 resolved was changing the embedding model. Put together with two measurements from the
 current config:
 
@@ -1359,10 +1359,10 @@ those can help a scorer that ranks the wrong thing highest.
 
 `bge-reranker-base` is the one component of this pipeline that has never been changed,
 while the embedder, the chunk text, the fusion, the query shape and the filter all have.
-It is also worth +0.157 — the single most valuable component measured on the 75-question set — which
+It is also worth +0.157, the single most valuable component measured on the 75-question set, which
 made it look settled rather than unexamined.
 
-## A bigger reranker does not help either — so it is not capacity
+## A bigger reranker does not help either, so it is not capacity
 
 Offline comparison on the 67 multi-span questions, reranking the *recorded* candidate
 pools so nothing but the scorer changes. The base model reproduces the live number exactly
@@ -1375,7 +1375,7 @@ pools so nothing but the scorer changes. The base model reproduces the live numb
 Two thirds of multi-span gold spans are already in the candidate pool. Both rerankers
 convert about half of them, and tripling the cross-encoder converts slightly fewer at seven
 times the cost. The gap between 0.32 and 0.67 is not a capacity problem, so "use a stronger
-reranker" — which the previous entry in this file recommended — is wrong.
+reranker", which the previous entry in this file recommended, is wrong.
 
 Nor is it a scoring-target problem. `rerank_per_query` scores each pool against its own
 sub-question, which removes the compound-query mismatch entirely, and reaches 0.3284: the
@@ -1389,8 +1389,8 @@ period, the answer-bearing passage is not in the top few.** Every intervention t
 worked on which candidates are present or how they are ordered relative to each other.
 None of them changes what a candidate *is*.
 
-`chunk_tokens` has never been swept. The first ablation varied chunking *strategy* —
-fixed, semantic, sentence_window — at a fixed 800 tokens throughout, and 42% of all misses
+`chunk_tokens` has never been swept. The first ablation varied chunking *strategy*:
+fixed, semantic, sentence_window, at a fixed 800 tokens throughout, and 42% of all misses
 are "right document, wrong passage", which is the signature of chunks too coarse to
 separate one disclosure from the next. It is the only untested lever that changes the unit
 being ranked rather than the ranking.
@@ -1421,7 +1421,7 @@ rather than a retrieval one. It does not happen here.
 **The index build is blocked on host memory, not on anything in this repo.** The earlier
 bge-base build sustained 22 chunks/s; the same build now runs at roughly 3. `vm_stat`
 showed 63 MB free with heavy swap activity, and the build process's own RSS had fallen to
-about 1 MB — it had been swapped out and was thrashing. Dropping the batch size from 128 to
+about 1 MB, it had been swapped out and was thrashing. Dropping the batch size from 128 to
 32 did not help: no 2048-chunk checkpoint in 5.5 minutes either way. This is an 8 GB machine
 at the end of a long session that has loaded several embedding and cross-encoder models.
 
@@ -1467,7 +1467,7 @@ the single-list evidence multi-span needs.
                                              multi-span  22/90 (24%)
 
 The reranker is not misjudging those passages; it is scoring a prefix that does not contain
-the answer. The contextual header is *not* the cause — `hit.text` is the pristine chunk and
+the answer. The contextual header is *not* the cause, `hit.text` is the pristine chunk and
 the header exists only in the embedding-time text, so it costs nothing here. Chunk length is
 the cause.
 
@@ -1479,7 +1479,7 @@ already built and ceiling-verified: max 369 words is ~480 tokens and fits the wi
 
 Reading ten zero-scoring temporal questions kills the "Q3 2023 vs three months ended
 September 30, 2023" hypothesis. Five of six gold spans contain **no period markers at all**:
-they are generic risk-factor prose — "Our risk management strategies may not be fully
+they are generic risk-factor prose, "Our risk management strategies may not be fully
 effective", "Our Framework is designed to identify, measure, assess". There is no period in
 the gold text to normalize against.
 
@@ -1505,24 +1505,24 @@ filing itself is a different case and the named year is the document's own.
     multi_hop      57                               16 (28%)                    41 (72%)
     temporal       34                               18 (53%)                    16 (47%)
 
-Multi-span is 72% *wrong document* — the passage-ranking work aimed at it has been aimed at
+Multi-span is 72% *wrong document*, the passage-ranking work aimed at it has been aimed at
 the smaller half. Temporal is the mirror image and the only tier where wrong-passage
 dominates.
 
-## Form filter with backoff — and why the year filter was not built
+## Form filter with backoff, and why the year filter was not built
 
 The form filter is implemented and tested; it is **not yet measured**, because the host ran
 out of memory before an eval could complete (see below).
 
 `filters_for` now adds `form` when a question names exactly one, alongside the issuer.
-`matches()` gained a third, declarative filter form — `{"prefix": "..."}` — chosen over a
+`matches()` gained a third, declarative filter form, `{"prefix": "..."}`, chosen over a
 predicate or callable because a prefix is expressible in every backend (`LIKE '2024%'`)
 while a Python callable is not. `_from_collection` backs off: if a filtered search returns
 fewer than k, it refills from the unfiltered ranking behind the filtered hits, so a wrong
 filter degrades to unfiltered behaviour rather than to an empty pool.
 
 **The year filter was measured and rejected before being written.** It is the obvious
-companion to the form filter, the question states the year, the metadata stores it — and it
+companion to the form filter, the question states the year, the metadata stores it, and it
 does not work:
 
     gold spans for questions naming "YYYY <form>":            99
@@ -1535,14 +1535,14 @@ does not work:
 year differs from the filing year 52% of the time, and every mismatch is +1. Widening to
 {YYYY, YYYY+1} still leaves a quarter of gold spans outside the filter. Recall lost to a
 filter is unrecoverable by any later stage, while the precision it buys is not, so a filter
-that discards 25% of the answers is worse than no filter — even with backoff, which would
+that discards 25% of the answers is worse than no filter, even with backoff, which would
 be firing constantly and returning the unfiltered ranking anyway.
 
 Form alone keeps 95%, which is why it is the half that shipped.
 
 **This means temporal is still unfixed, and now known to be hard rather than merely
 unattempted.** 88% of temporal gold spans are boilerplate repeated verbatim across filings,
-so only the filing year distinguishes the right copy — and the year is precisely the signal
+so only the filing year distinguishes the right copy, and the year is precisely the signal
 too unreliable to filter on. Any fix has to come from the golden set (accept any filing
 carrying the text) or from a fiscal-period field extracted from document content rather than
 inferred from the question.
@@ -1555,15 +1555,15 @@ eval. None is a code fault.
     swap: 2048 MB total, 1175 MB used   ->   9216 MB total, 7660 MB used
     free RAM 77 MB, inactive 1110 MB
 
-An 8 GB machine driven through many model loads — two embedding models, two cross-encoders,
-FAISS stores for two collections, repeated eval processes — ends the session deep in swap,
+An 8 GB machine driven through many model loads, two embedding models, two cross-encoders,
+FAISS stores for two collections, repeated eval processes, ends the session deep in swap,
 and every subsequent job thrashes. The earlier bge-base build held 22 chunks/s; the same
 build now cannot reach its first 2048-chunk checkpoint in 12 minutes.
 
 The remedy is not a code change: restart the machine (or otherwise reclaim memory) and rerun.
 Everything needed is committed and the commands are recorded above.
 
-## The year filter was rejected on a confounded measurement — corrected
+## The year filter was rejected on a confounded measurement, corrected
 
 The earlier entry rejected a filing-year filter because the year window {YYYY, YYYY+1}
 covered only 75% of gold spans. That number was measured on the **compound question**, and
@@ -1603,7 +1603,7 @@ multi_hop carries the gain; temporal pays for it. Two filters wanting different 
 ### The temporal regression is downstream of the filter, not caused by it
 
 Of the 2 (of 25) temporal questions that regressed, **all four gold spans were inside the
-filtered pool** — none dropped. q054's two gold spans sat at pool ranks **1 and 4** and
+filtered pool**, none dropped. q054's two gold spans sat at pool ranks **1 and 4** and
 still missed the top-8: the reranker demoted evidence that RRF had ranked first. Filtering
 homogenises the pool, the surviving competitors are same-year near-duplicates, and the
 cross-encoder cannot separate them.
@@ -1612,13 +1612,13 @@ cross-encoder cannot separate them.
 
 3434 -> 6934 ms p50 looked like unconditional backoff. It is not: measured over 27 filtered
 questions, **backoff fires 0 times**, filtered search costs 192 ms against 173 ms
-unfiltered — an 11% overhead. The p50 difference is host state; that run executed during
+unfiltered, an 11% overhead. The p50 difference is host state; that run executed during
 swap recovery with individual questions logging 22-29 s. Latency figures from this session
 are unreliable and should not be quoted as costs of any change.
 
 ## Context budget: the sweep, and an end-to-end run cut short
 
-Reranking the recorded pools offline and cutting at each k — same information as four runs:
+Reranking the recorded pools offline and cutting at each k, same information as four runs:
 
        k      all   single    multi  temporal   d(all)   per slot
        8   0.5552   0.6842   0.3358    0.3000
@@ -1628,7 +1628,7 @@ Reranking the recorded pools offline and cutting at each k — same information 
       32   0.7597   0.8246   0.6493    0.6800  +0.0193    +0.0024
 
 The knee is k=16: per-slot value falls 2.5x after it, and single-span saturates by 24.
-Multi-span and temporal keep climbing, which fits the q054 finding — their evidence is
+Multi-span and temporal keep climbing, which fits the q054 finding, their evidence is
 sitting just below the cut.
 
 **The end-to-end arm did not finish.** k=8 completed; k=16 died at question 113 of 202 on
@@ -1643,8 +1643,8 @@ a paired retrieval comparison over the 102 shared questions:
     temporal      8  0.3125  0.6250   +0.3125   [+0.0625, +0.5625]
 
 This corroborates the offline sweep and settles nothing that matters: recall@16 against
-recall@8 is partly definitional, and whether a 16-chunk context produces better *answers* —
-citation density, over-refusal, correctness — requires the run that did not complete.
+recall@8 is partly definitional, and whether a 16-chunk context produces better *answers*
+(citation density, over-refusal, correctness) requires the run that did not complete.
 
 k=8 end-to-end, for whenever the k=16 arm can be repeated:
 
@@ -1669,7 +1669,7 @@ Offline over the recorded pools of the current best config, so only the scorer c
     temporal       25   0.3000   0.3600  +0.0600  [-0.0400,+0.1600]
 
 Larger than issuer filtering (+0.0470), and unlike it this needs no re-index, no API call
-and no new model — the same cross-encoder, shown the rest of the passage.
+and no new model, the same cross-encoder, shown the rest of the passage.
 
 One detail cuts against the obvious reading of the mechanism, and is worth keeping: truncation
 hid *more* multi-span evidence (24% vs 14%), yet the fix helps single-span *more* (+0.0789 vs
@@ -1681,7 +1681,7 @@ On by default (`--no-rerank-windows` is the control arm). Costs roughly 1.5x rer
 
 **It also bears on the k question.** The offline sweep put k=16 at 0.6961 against k=8 at
 0.5552, a +0.14 gain bought with double the context. Windowing gets +0.0635 of that at k=8,
-with no extra context for the generator to be distracted by — which is the failure mode the
+with no extra context for the generator to be distracted by, which is the failure mode the
 missing end-to-end arm exists to test. Any future k sweep should be re-derived on top of
 windowing rather than against the old k=8 baseline, or it will double-count the same evidence.
 
@@ -1698,7 +1698,7 @@ Arm A (windowing, k=8) against Arm B (windowing, k=24), same config otherwise:
     cost_usd_per_query  0.0195   0.0440   2.26x
     recall (at own k)   0.6160   0.7597   +0.1436   <- partly definitional
 
-**The generator does not degrade under more evidence — it converts.** Of the 39 questions
+**The generator does not degrade under more evidence, it converts.** Of the 39 questions
 where k=24 newly put gold in context, 39 were answered and 0 refused. Refusals on
 answerable questions fell 39/181 -> 15/181. Over-refusal at 0.2155 was diagnosed as the
 binding constraint on answer quality; it was a context-budget artifact and collapsed by 62%
@@ -1719,10 +1719,10 @@ Where the gain lives, from Arm B's own recorded ranking:
 The last eight slots buy +0.0166 for 50% more context.
 
 Abstention recall's 0.9048 -> 0.8571 is three questions on 21 negatives. Not measurable, and
-directionally what a less conservative generator produces — but 21 negatives is too thin to
+directionally what a less conservative generator produces, but 21 negatives is too thin to
 detect a real regression. Flagged as a blind spot, not a resolved non-issue.
 
-## Decomposition is not the problem — 100% coverage, and it changes nothing
+## Decomposition is not the problem, 100% coverage, and it changes nothing
 
     multi-span questions decomposed                          67/67  (100%)
       sub-question counts: 2-way 33, 3-way 21, 4-way 13
@@ -1737,14 +1737,14 @@ candidate among several.
 
 **This audit was impossible until now.** `Answer.sub_questions` existed from the start and
 `generate.answer()` never populated it, and `run_eval`'s generating branch never recorded
-it — so every run that cost money produced an empty list, while the retrieve-only branch
+it, so every run that cost money produced an empty list, while the retrieve-only branch
 (fixed earlier for exactly this reason) recorded it correctly. The same field, the same
 omission, in the branch that was not checked. Both are now threaded.
 
 ## Within-collection fusion: the mechanism is real, the fix is small, and width is the lever
 
-The 21-of-48 diagnostic — gold sitting at rank <=20 in a retriever that is already running,
-in a pool built to hold 20, that never arrives — pointed at dense/BM25 fusion inside a
+The 21-of-48 diagnostic, gold sitting at rank <=20 in a retriever that is already running,
+in a pool built to hold 20, that never arrives, pointed at dense/BM25 fusion inside a
 collection. That is the same consensus-suppression raised early on for cross-sub-question
 fusion, which was correctly measured and closed there (quotas +0.0299, interleave +0.0075).
 The mechanism was real; it was operating one level down, where nobody had looked. The
@@ -1758,7 +1758,7 @@ Sweeping the RRF constant and trying max-rank, offline over one cached retrieval
     rrf_k=1            0.8155
     max-rank           0.8112
 
-On the 46 gold spans found by only one retriever — the population fusion can outvote:
+On the 46 gold spans found by only one retriever, the population fusion can outvote:
 
     rrf_k=60 recovers 19/46      rrf_k=1 recovers 26/46      max-rank recovers 27/46
 
@@ -1780,7 +1780,7 @@ Widening 20 -> 50 is worth +0.103; the best fusion change at fixed width is wort
 The 0.83 "pool ceiling" quoted throughout this project is an artifact of top_k_retrieve=20,
 not a limit of the index. At k=50 the pool holds 0.9185 of gold spans.
 
-Note rrf_k=20 beats 60 at every width <= 50, converges at 80 and inverts at 120 — the
+Note rrf_k=20 beats 60 at every width <= 50, converges at 80 and inverts at 120, the
 constant is better *at the widths in use*, not universally. Worth pinning to the width.
 
 ### What this means for the earlier pool-width rejection
@@ -1796,7 +1796,7 @@ this track is that evidence reaching the pool is necessary and not sufficient.
 
 ## Pool width, retested on the corrected baseline: widening still loses
 
-Windowing fixed the truncated-prefix reranker and k=16 fixed the 8-slot budget — the two
+Windowing fixed the truncated-prefix reranker and k=16 fixed the 8-slot budget, the two
 causes blamed for the original k=50 rejection. Retested with both fixed, at rrf_k=20:
 
     width   pool recall   final@16   conversion   median pool
@@ -1810,7 +1810,7 @@ blind reranker; it reproduces with both causes removed.
 
 The arithmetic is simple and was there to be seen: a wider pool adds *candidates*, not
 *slots*. Every added candidate is another chance for the reranker to displace something
-correct, and the reranker converts at roughly 71-88% — well short of the rate needed for
+correct, and the reranker converts at roughly 71-88%, well short of the rate needed for
 extra pool material to pay for the competition it creates.
 
 Truncation null, top-8 of a wide pool against top-8 of the narrow one:
@@ -1818,7 +1818,7 @@ Truncation null, top-8 of a wide pool against top-8 of the narrow one:
     width 20 vs 30   identical 30%   mean Jaccard 0.740
     width 20 vs 50   identical 20%   mean Jaccard 0.612
 
-Unlike the k=8/k=24 comparison — which was identical on every tier — widening **reorders the
+Unlike the k=8/k=24 comparison, which was identical on every tier, widening **reorders the
 head of the list**. It is not additive at the margin, which is exactly why its gain does not
 separate cleanly and why it can lose despite holding more evidence.
 
@@ -1838,12 +1838,12 @@ quarters of its members with the real one. The first two width tables computed f
 wrong and are superseded by the one above.
 
 The check that caught it was cheap and specific: reproduce a known run exactly before
-trusting anything derived. Set overlap alone would not have caught it — 75% looks healthy;
+trusting anything derived. Set overlap alone would not have caught it, 75% looks healthy;
 the exact-order match at 2% is what exposed it.
 
 Score coverage was 87.9% of width-50 pool members, which biases against wide pools since
 unscored chunks sort last. Sized before drawing any conclusion: **0, 0 and 1 gold spans
-unscored at widths 20, 30 and 50** — at most one span of 214 affected, so the finding is not
+unscored at widths 20, 30 and 50**, at most one span of 214 affected, so the finding is not
 a coverage artifact.
 
 ### Where this leaves the selection track
@@ -1854,16 +1854,16 @@ constraint is the reranker's ability to choose 16 from 64, and it gets worse as 
 grows. Every remaining lever on this track has to make the *scorer* better, not give it more
 to look at.
 
-## Standing rule: validate derived pipelines on exact order, not set overlap
+## Rule: validate derived pipelines on exact order, not set overlap
 
-Offline simulation over cached retrieval is the cheapest tool in this project — it produced
+Offline simulation over cached retrieval is the cheapest tool in this project, it produced
 the k sweep, the fusion sweep, the reranker comparisons and the width retest for a fraction
 of what running them would have cost. It is also the easiest place to be confidently wrong,
 because a simulation that is subtly not the pipeline still returns plausible numbers.
 
 **Any simulated or derived pipeline must reproduce a real run's output in exact order before
 its numbers are quoted.** Set-level agreement is not sensitive enough. The width simulation
-sat at 75.6% set overlap through two wrong versions — a number that reads as healthy — while
+sat at 75.6% set overlap through two wrong versions, a number that reads as healthy, while
 exact-order match stayed at 2% and correctly said the pool was not the real one. Only after
 truncating each retriever's list to W before fusing did it reach 87% exact / 97.9% overlap.
 
@@ -1879,7 +1879,7 @@ Forcing gold-bearing chunks to the top of the pool, 16 slots:
        30      0.6824      0.8798    +0.1974          0.8798
        50      0.6524      0.9185    +0.2661          0.9185
 
-oracle@16 equals pool recall exactly at every width — with at most two gold spans per
+oracle@16 equals pool recall exactly at every width, with at most two gold spans per
 question and sixteen slots, a perfect scorer captures everything the pool holds.
 
 This reframes the width result rather than confirming it. **Widening loses only because the
@@ -1888,7 +1888,7 @@ candidates is entirely a property of the reranker's ability to choose among them
 track is not closed on its merits; it is blocked behind scoring quality and reopens if
 scoring improves.
 
-+0.0987 is available at the current width from scoring alone — larger than any single change
++0.0987 is available at the current width from scoring alone, larger than any single change
 this project has landed.
 
 ## A larger cross-encoder does not capture the scoring headroom
@@ -1897,7 +1897,7 @@ The oracle put +0.0987 recall@16 on the table at width 20. The obvious way to sp
 a bigger reranker, and the earlier rejection of `bge-reranker-large` did not transfer: that
 test ran when every passage over 512 tokens was scored on a truncated prefix, so both models
 were reading partial evidence and a larger model's advantage would be muted. With windowing
-on, both read whole passages — the regime where cross-encoder capacity should matter.
+on, both read whole passages, the regime where cross-encoder capacity should matter.
 
 Measured on a Colab T4 over all 181 answerable questions, both models scored in one session
 from one pair list:
@@ -1909,7 +1909,7 @@ from one pair list:
 
 **161 of 181 questions score identically.** Of the 20 that differ, large wins 9 and base
 wins 11. The two models are indistinguishable, and the per-tier breakdown that first looked
-like a pattern — "previously truncated" at -0.0513 — is two spans out of 39.
+like a pattern, "previously truncated" at -0.0513, is two spans out of 39.
 
 This is a stronger negative than the earlier one: full question set, windowing on, paired
 interval, and a transfer that reproduced local scores to 0.00000 absolute difference across
@@ -1918,7 +1918,7 @@ interval, and a transfer that reproduced local scores to 0.00000 absolute differ
 ### The transfer check, and what it cost to build
 
 Colab's base scores had to reproduce locally computed ones before the comparison would
-print. They matched exactly — MPS and CUDA agreed bit-for-bit, which was better than the
+print. They matched exactly, MPS and CUDA agreed bit-for-bit, which was better than the
 1e-2 tolerance allowed for float noise across accelerators.
 
 Two things made that check meaningful rather than ceremonial. The windowing function was
@@ -1927,7 +1927,7 @@ tokenise differently and a boundary that drifted by one token would compare two 
 two different views of the same passage. And `doc_id` was carried explicitly per chunk
 rather than parsed out of the chunk id: ids are `{doc_id}_{section}_{NNN}`, so recovering
 the document means guessing where the section slug starts, and `is_hit` requires an exact
-doc_id match — the first draft would have scored real hits as misses.
+doc_id match, the first draft would have scored real hits as misses.
 
 Tooling lives in `~/Desktop/finhelm-colab/` (export, score, import, README). Gold spans
 never leave this machine; Colab sees question text and candidate chunks only.
@@ -1948,12 +1948,12 @@ this project keeps running into: the wrong thing did not fail, it just quietly d
 feature. `docker buildx` was not installed, so `docker build` fell back to the legacy
 builder without saying so, the heredoc had no body, python read an empty stdin, and both
 weight steps exited 0 having done nothing. The build then ran for another two stages and
-died at `COPY --from=weights /opt/hf` — pointing at a COPY that was correct, twenty
+died at `COPY --from=weights /opt/hf`, pointing at a COPY that was correct, twenty
 minutes after the step that actually failed. Worse, the wrapper reported exit 0 because
 the build was piped through `tail`, so the *pipeline's* status was tail's.
 Fixed twice over: buildx installed, and the heredocs replaced by
 `scripts/bake_weights.py`, which asserts a `.safetensors` actually arrived and refuses to
-run its verification unless `HF_HUB_OFFLINE=1` is set — a check that proves nothing if the
+run its verification unless `HF_HUB_OFFLINE=1` is set, a check that proves nothing if the
 fence is off, because a missing file would simply be downloaded instead of reported.
 
 **The Postgres DSN had three names, no two of which matched.** `.env` set
@@ -1963,8 +1963,8 @@ is `localhost`, which inside a container is the container. Every service would h
 configured to talk to a database and quietly talked to itself.
 
 **The Streamlit "split complex questions" toggle did nothing.** `AskRequest` had no
-`agentic` field, so in API mode — the only mode compose ever runs, since it always sets
-`FINHELM_API_URL` — the toggle was inert. It rendered, it flipped, it changed no
+`agentic` field, so in API mode, the only mode compose ever runs, since it always sets
+`FINHELM_API_URL`, the toggle was inert. It rendered, it flipped, it changed no
 behaviour. The in-process path honoured it, which is exactly why nobody noticed.
 
 **`embed_dim` again, at the call site this time.** The pgvector work turned `Config.embed_dim` into
@@ -1983,8 +1983,8 @@ committed because the ignore rule only covered `*.json`.
 The lesson is the same one as the width simulation and the "silent crash" that was really
 SIGKILL: **a step that cannot fail loudly is a step you are not actually running.**
 `tests/test_container_config.py` now asserts the Dockerfile and compose agree with the
-code — the DSN name, the baked models, the gRPC port, `.env` staying out of the build
-context — in milliseconds, with no daemon.
+code, the DSN name, the baked models, the gRPC port, `.env` staying out of the build
+context, in milliseconds, with no daemon.
 
 ### The 2.1 GB of CUDA, and two wrong fixes before the right one
 
@@ -1992,7 +1992,7 @@ Worth its own entry because both obvious fixes are wrong in ways that look right
 third attempt is the one that works.
 
 **The finding.** PyPI's linux torch 2.13.0 wheel is a CUDA build on *arm64* as well as
-amd64 — the installed version string is literally `2.13.0+cu130`. It pulls
+amd64, the installed version string is literally `2.13.0+cu130`. It pulls
 `nvidia-cublas` (542 MB by itself), `cudnn`, `nccl`, `cusparselt`, `nvshmem`, `triton` and
 nine more: **2.1 GB of GPU runtime into an image whose entire job is CPU inference.** The
 common advice that arm64 wheels are CPU-only is simply not true here.
@@ -2015,7 +2015,7 @@ architecture.** Two things had to be checked rather than assumed to get here.
 
 The CPU index *does* publish `torch-2.13.0+cpu-cp310-cp310-manylinux_2_28_aarch64.whl`.
 The first attempt's `ERROR: Could not find a version that satisfies the requirement
-flit_core` was never about torch at all — `--index-url` **replaces** PyPI rather than
+flit_core` was never about torch at all, `--index-url` **replaces** PyPI rather than
 adding to it, so torch's ordinary Python dependencies had no wheels to resolve from and
 pip fell back to building them from sdists. `--no-deps` is what makes the CPU index usable
 here; the size saving is a consequence, not the mechanism.
@@ -2028,12 +2028,12 @@ entirely by which wheel got there first.
 **Both guards stay, because every one of these failures was silent by construction.**
 Nothing reports "your image grew by 2.1 GB"; `docker build` prints success either way. The
 build now fails if `import torch` fails, if any `nvidia-*` or `triton` distribution is
-installed, and — in the runtime stage, as the non-root user with the Hub fenced off — if
+installed, and, in the runtime stage, as the non-root user with the Hub fenced off, if
 the full application import graph does not come up. Wrong fix 2 was caught by the first of
 those within seconds of introducing it, which is the entire argument for writing them.
 
 **This has a consequence for the CI gate.** A stock workflow runs a bare
-`pip install -r requirements.txt` on `ubuntu-latest`, which is amd64 — so CI would pull
+`pip install -r requirements.txt` on `ubuntu-latest`, which is amd64, so CI would pull
 the CUDA torch on every push: gigabytes of download against a runner disk quota, to run
 tests that never touch a GPU. The CI step needs the same CPU-index treatment as the image.
 
@@ -2049,7 +2049,7 @@ behind a socket are indistinguishable; pgvector's p95 is worse (4.5 ms vs 2.0 ms
 is the only visible cost.
 
 **The prediction in pgvector_store.py's own docstring did not reproduce.** It argues that
-FAISS's post-filter — over-fetch `k * 20`, discard non-matches — returns fewer than k under
+FAISS's post-filter, over-fetch `k * 20`, discard non-matches, returns fewer than k under
 a narrow filter, and that this is why the issuer filter needed a backoff path. On the 28
 golden-set questions where `filters_for()` actually fires, FAISS returned short **0 times
 out of 28.** An issuer is roughly a ninth of this corpus and 400 candidates is a wide net.
@@ -2057,7 +2057,7 @@ That is consistent with the earlier finding that the backoff path fires 0/27 tim
 should be reported as the negative result it is.
 
 **The mechanism is real, and it is arithmetic, so it can be shown rather than argued.**
-The narrowest (ticker, form, year) cell holds 26 of 24,650 rows — 0.105% — and a
+The narrowest (ticker, form, year) cell holds 26 of 24,650 rows, 0.105%, and a
 400-candidate window expects 0.42 matches in it:
 
 | filter | rows | % corpus | faiss | pgvector |
@@ -2067,12 +2067,12 @@ The narrowest (ticker, form, year) cell holds 26 of 24,650 rows — 0.105% — a
 | GS 8-K 2025 | 31 | 0.126% | **0.0** | 20.0 |
 
 Mean results returned against k=20, same predicate checked against `stores.base.matches`
-on both sides first. FAISS returns *nothing* where 26 matching rows exist, with no error —
+on both sides first. FAISS returns *nothing* where 26 matching rows exist, with no error,
 which is the honest argument for a real database, correctly labelled as a constructed case
 this project's filters do not currently reach.
 
 Agreement between the backends on the real filters: exact-order 0.941, set overlap 0.992.
-Both are reported, and the order figure is the one that means anything — HNSW is
+Both are reported, and the order figure is the one that means anything, HNSW is
 approximate and owes the flat index a close ordering, not an identical one.
 
 ## The CI gate, and three ways it went wrong
@@ -2081,7 +2081,7 @@ approximate and owes the flat index a close ordering, not an identical one.
 
 `--fail-under recall_at_5=0.75` names a metric this system does not produce. It serves
 top-k=16 and `summarize` writes `recall_at_16`; `recall_at_5` is simply absent from the
-dict. A lenient implementation looks it up, finds nothing, and passes — forever, on every
+dict. A lenient implementation looks it up, finds nothing, and passes, forever, on every
 push, while the workflow file continues to read exactly like a gate. `enforce()` therefore
 treats an unknown metric name as a *failure* and prints the metrics that do exist. Same
 for a metric present but None: a retrieve-only run has no `citation_validity`, and
@@ -2100,19 +2100,19 @@ behaviour is to degrade quietly rather than stop:
   questions and reports a number that looks real.
 - **The LLM router fires on 100 of 202 questions.** So "deterministic" required
   `llm_router=False`, where the heuristic fans out to both collections. That is a superset
-  of what the model would choose, so recall can only be understated — safe for a recall
+  of what the model would choose, so recall can only be understated, safe for a recall
   gate, and not safe for `route_accuracy`, which collapses.
 
 ### The fixture: 2 chunks/s, not one minute
 
 CI has no corpus (192 MB) and no index (961 MB), both gitignored. `scripts/make_ci_fixture.py`
 carves out every chunk holding a gold span for a stratified 40-question subset plus 1,800
-distractors — 1,903 chunks, 1.4 MB — selecting them with `metrics.is_hit` itself rather
+distractors, 1,903 chunks, 1.4 MB, selecting them with `metrics.is_hit` itself rather
 than a lookalike, so the fixture cannot disagree with the metric that reads it.
 
 The plan was to build the index in CI. Measured: **581 s for 1,131 chunks, 2 chunks/s** on
 CPU. That is ~16 minutes for the fixture on a machine with more cores than a runner, and
-caching only defers it to the next eviction. So the index is committed too — 9.3 MB, with
+caching only defers it to the next eviction. So the index is committed too, 9.3 MB, with
 `data/ci` laid out as a data directory (`processed/` beside `index/`) so `FINHELM_DATA_DIR`
 points straight at it. **The estimate of "about a minute" came from counting chunks and
 not measuring throughput.**
@@ -2120,7 +2120,7 @@ not measuring throughput.**
 ### faiss + torch on CPU is a segfault, and only CI would have hit it
 
 Every dense retrieval died with **SIGSEGV (exit 139)** once the run was pointed at CPU.
-Not memory — it reproduced with 3 GB free. Bisected: BM25 alone exit 0, every dense path
+Not memory, it reproduced with 3 GB free. Bisected: BM25 alone exit 0, every dense path
 139. `faiss-cpu` and torch each carry their own OpenMP runtime and the two thread pools
 collide when FAISS is loaded before torch encodes, which is the order `_search` uses.
 
@@ -2129,12 +2129,12 @@ torch starts no OpenMP pool. **It is a bug that exists only on the machines CI r
 `KMP_DUPLICATE_LIB_OK=TRUE` does not help; `OMP_NUM_THREADS=1` does. Pinned in the
 workflow.
 
-### Two self-inflicted ones worth writing down
+### Two self-inflicted problems
 
-**A `--help` loop destroyed 127 golden questions.** Checking that every script imported
-cleanly, `for f in scripts/*.py; do python "$f" --help; done` — and four scripts have no
-argparse, so `--help` was not a flag they parse, it was just an argument they ignored
-while running normally. `assemble_golden.py` reassembled the golden set from its 75-question
+**A `--help` loop destroyed 127 golden questions.** The check was
+`for f in scripts/*.py; do python "$f" --help; done`, meant to confirm every script
+imported cleanly. Four scripts have no argparse, so `--help` was not a flag they parse;
+it was an argument they ignored while running normally. `assemble_golden.py` reassembled the golden set from its 75-question
 sources and overwrote the 202-question file. git had it. Nothing else warned, and nothing
 would have: the file is data, the script is idempotent by design, and the loop looked
 read-only. `assemble_golden.py` now refuses to shrink the file without `--force`.
@@ -2143,7 +2143,7 @@ read-only. `assemble_golden.py` now refuses to shrink the file without `--force`
 `PROCESSED` and `INDEX_DIR` instead of importing them, so a run aimed at the 1,900-chunk
 fixture spent seventeen minutes embedding the real 24,650-chunk corpus and was on its way
 to overwriting the real index when it was caught. Paths now live in `src/finhelm/paths.py`
-and the script prints which corpus it is reading — the override being invisible is what
+and the script prints which corpus it is reading, the override being invisible is what
 let it run that long.
 
 ### Not finished
@@ -2173,8 +2173,8 @@ The claim that this "only exists on the machines CI runs on" was also wrong. The
 note records that Linux wheels do not carry the duplicate-libomp conflict at all, so CI
 may well never have hit it. What is true is narrower and worth keeping: it appears only
 when torch runs on CPU, which is what CI does and what a Mac does not. `OMP_NUM_THREADS=1`
-stays in the workflow — it is harmless, and on a 2-vCPU runner capping thread contention
-is the right default anyway — but it is insurance, not a fix for a confirmed CI failure.
+stays in the workflow: it is harmless, and on a 2-vCPU runner capping thread contention
+is the right default anyway, but it is insurance, not a fix for a confirmed CI failure.
 
 ### The gate, calibrated and proven red
 
@@ -2184,8 +2184,8 @@ identical code gives an identical number, but one question flipping is worth ~1/
 floor that trips on that is a floor nobody keeps.
 
 `--fail-on-fallback` was too strict as first written and could never have passed.
-`complaints` exists only as `fixed` **by design** — complaint narratives are a few hundred
-words and already close to one chunk, so re-chunking them tests nothing — and the check
+`complaints` exists only as `fixed` **by design**, complaint narratives are a few hundred
+words and already close to one chunk, so re-chunking them tests nothing, and the check
 fired on that intended substitution. Now `--allow-fallback complaints` names the exception
 explicitly, which keeps the check sharp for the case it exists for: filings falling back,
 meaning the index the config names is missing.
@@ -2198,7 +2198,7 @@ Proof it fails, same command with the context budget cut from 16 to 2:
 | top_k_context=2 | 0.6667 | 0.4375 | 0.9286 | exit 1 |
 
 The pattern matters more than the failure. Single-span recall is *identical* and
-multi-span nearly halves — exactly what cutting the context budget should do, since only
+multi-span nearly halves, exactly what cutting the context budget should do, since only
 questions needing several passages can be hurt by having fewer slots. A gate that went red
 without that signature would be responding to something other than the break.
 
@@ -2209,7 +2209,7 @@ the baseline's own kind rather than hardcoding a run name that any config change
 
 ### The PR quality gate was scoring a system nobody runs
 
-`tests/test_smoke_deepeval.py` built its answers with a bare `Config()` — chunking=fixed,
+`tests/test_smoke_deepeval.py` built its answers with a bare `Config()`, chunking=fixed,
 retriever=dense, no reranking, bge-small, top_k_context=8. The service is pinned to
 semantic + hybrid + rerank + contextual headers + bge-base at k=16. So for the life of
 that file the DeepEval PR gate measured faithfulness and relevancy on a configuration this
@@ -2219,7 +2219,7 @@ It passed locally the whole time, because a developer machine happens to have a
 `filings_fixed` index sitting on disk from the ablation. It surfaced only in CI,
 where the committed fixture contains exactly two indexes and FAISS said so:
 `could not open data/ci/index/filings_fixed/index.faiss`. The environment with *fewer*
-artifacts is the one that caught it — the richer machine hid the bug by having the wrong
+artifacts is the one that caught it, the richer machine hid the bug by having the wrong
 index available.
 
 Fixed by importing `api.CONFIG`, the same pinned object the service and the container use.
@@ -2231,7 +2231,7 @@ Two related things fixed alongside:
   module-level skip with the missing names in the reason.
 - That skip resolves keys through `llm.env()` rather than `os.getenv`, because `llm` falls
   back to `.env` and an `os.getenv` check would have silently skipped the entire judged
-  suite on every developer machine — the exact failure the guard exists to prevent. The
+  suite on every developer machine, the exact failure the guard exists to prevent. The
   workflow separately *fails* a same-repo PR whose secrets are unset, so the skip cannot
   become a gate that quietly stopped gating.
 
@@ -2239,12 +2239,12 @@ Two related things fixed alongside:
 
 Worth recording because it is the point of `--deterministic-only`: the deliberate-break
 run scored `recall_at_16 = 0.6667` on a GitHub runner, against `0.6667` measured on this
-laptop. Different OS, different CPU architecture, different thread count — same digits.
+laptop. Different OS, different CPU architecture, different thread count, same digits.
 A gate whose number moves with the machine cannot distinguish a regression from a runner.
 
 ## The judged gate was scoring a config the project never ships
 
-`tests/test_smoke_deepeval.py` built its answers with a bare `Config()` —
+`tests/test_smoke_deepeval.py` built its answers with a bare `Config()`:
 `fixed` chunking, dense retrieval, no reranking, bge-small, `top_k_context=8`. The service
 is pinned to semantic + hybrid + rerank + contextual headers + bge-base at k=16. For the
 life of that file the PR quality gate scored a system nobody runs, and every faithfulness
@@ -2259,7 +2259,7 @@ happened not to contain the artifact the wrong config wanted.
 ### Fixing it doubled the gate's cost, and broke it twice more
 
 `ContextualRelevancyMetric` judges every retrieved context, and `judge.py` paces the judge
-at 12 RPM to stay inside the Gemini free tier — one call every five seconds, globally,
+at 12 RPM to stay inside the Gemini free tier: one call every five seconds, globally,
 because the quota is per project per model. So the floor is questions x k:
 
 | config scored | k | paced calls | floor |
@@ -2273,7 +2273,7 @@ min · a few cents" for this tier describes the k=8 config.
 Two separate timeouts then fired, and both produced misleading failures:
 
 **DeepEval's per-attempt timeout (207 s).** Four `test_answer_is_grounded` cases failed
-with `asyncio.exceptions.CancelledError` and no metric score anywhere — which reads
+with `asyncio.exceptions.CancelledError` and no metric score anywhere, which reads
 exactly like four unfaithful answers. They were never scored. A single test case needs
 well over forty paced calls, so it passes 200 seconds before any judging is slow; it is
 merely spaced out. Now disabled at the top of the module rather than raised, because any
@@ -2286,7 +2286,7 @@ produced pointed at answer quality when the cause was rate limiting.
 
 ### The cheap fix that would have gutted the gate
 
-The obvious saving is to judge faithfulness against only the passages the answer cited —
+The obvious saving is to judge faithfulness against only the passages the answer cited:
 far fewer contexts, same twelve questions. It is wrong, and the reason generalises.
 
 Faithfulness asks whether the answer is grounded in the evidence the system **was given**.
@@ -2297,7 +2297,7 @@ passes cleanly, because the only evidence examined is the evidence the answer se
 This repo already holds the counterexample. q055 fabricates Jamie Dimon's compensation and
 cites a real 8-K cover page; it scores `citation_validity` 1.0 today, which is why it is a
 `strict=True` xfail. Under cited-only faithfulness it would very likely score well there
-too — the cited page exists, it is from the right filing, and it does not contradict the
+too, the cited page exists, it is from the right filing, and it does not contradict the
 claim because it does not address it. The one gate capable of catching that class of
 failure would stop being able to, in a system whose entire value proposition is that it
 does not fabricate.
@@ -2314,13 +2314,13 @@ k is the term that must not move. In order: a paid Gemini tier (60 RPM puts the 
 the gate, since a PR check needs to be consistent and fast rather than identical to a
 final-evaluation judge; or fewer questions at full k, where 6 x 16 costs what 12 x 8 did
 and weakens coverage in a way that can be stated plainly. If none are available, sample
-contexts at **random** rather than by citation — random sampling is a weaker version of
-the same measurement, cited-only is a different measurement wearing its clothes.
+contexts at **random** rather than by citation, random sampling is a weaker version of
+the same measurement; cited-only measures something different.
 
 
-## Standing rule: anything that validates the system must be pinned to the served config
+## Rule: anything that validates the system must be pinned to the served config
 
-Three findings now share one shape, and it is worth stating as a rule rather than
+Three findings share one shape, so it is stated here as a rule rather than
 rediscovering a fourth time.
 
 - `Answer.sub_questions` existed and was never populated, so every generating run recorded
@@ -2328,22 +2328,22 @@ rediscovering a fourth time.
 - The width simulation fused cached top-200 lists and truncated, while the real pipeline
   fetched top-20 and fused those. 75.6% set overlap looked healthy; exact-order agreement
   was 2%.
-- The DeepEval PR gate scored a bare `Config()` — fixed, dense, no rerank, bge-small, k=8 —
+- The DeepEval PR gate scored a bare `Config()`, fixed, dense, no rerank, bge-small, k=8,
   for the life of the file. **Every quality gate this project has passed was gating a
   configuration the service never ran.**
 
 Each looked healthy because nothing compared it against the real thing, and each produced
 plausible numbers rather than an error.
 
-**The rule.** Anything that validates the system — a smoke gate, a simulation, a benchmark,
-a fixture — must be pinned to the served config (`api.CONFIG`), not to a freshly
+**The rule.** Anything that validates the system, a smoke gate, a simulation, a benchmark,
+a fixture, must be pinned to the served config (`api.CONFIG`), not to a freshly
 constructed default. And that pinning has to be asserted somewhere the local filesystem
 cannot paper over: the gate bug survived because `data/index/filings_fixed` exists on a
 developer machine, so the wrong config loaded happily and passed. It surfaced only on a
 runner that had no such directory. `tests/test_container_config.py` is where this kind of
-assertion belongs — it already checks that the image bakes the models `api.CONFIG` names,
+assertion belongs, it already checks that the image bakes the models `api.CONFIG` names,
 for the same reason.
-## Standing rule: verify a claim about a past run against the run, not against memory
+## Rule: verify a claim about a past run against the run, not against memory
 
 Three times now a stated conclusion has been overturned by going back to the artifact:
 
@@ -2363,8 +2363,8 @@ in one query: 14 of 15 full-corpus runs are `agentic=True`, and the single `agen
 run differs from the served config in five dimensions and reports recall@5. There was no
 control.
 
-**The rule.** A claim about what a previous run established gets verified against the run —
-its recorded config and its recorded metrics — and not recalled. Two adjacent findings are
+**The rule.** A claim about what a previous run established gets verified against the run:
+its recorded config and its recorded metrics, and not recalled. Two adjacent findings are
 easy to conflate precisely because they are adjacent, and recollection does not preserve
 which one was measured.
 
@@ -2381,12 +2381,12 @@ ride on having sub-questions at all:
    difference: 75% filter coverage on the compound question against 99% on sub-questions.
 
 So the honest framing of the measured delta is **decompose + cross-query fusion +
-per-sub-question filtering, versus a single query** — a broader claim than "what
+per-sub-question filtering, versus a single query**, a broader claim than "what
 decomposition contributes", and it should be written that way rather than attributed to
 decomposition alone.
 
 Baseline note: `winK16` reports recall@16 of **0.7403 macro** and **0.7016 micro**. These
-are one run reported two ways, not two baselines — macro is the mean of per-question
+are one run reported two ways, not two baselines, macro is the mean of per-question
 recall, micro is spans-found over spans-total, and they diverge whenever span counts are
 unequal. The comparison is macro to macro.
 
@@ -2404,7 +2404,7 @@ and reporting "decomposition is worth +0.05" would overstate it. The writeup say
 rather than listing three components as if they were interchangeable.
 
 **The isolated number is one cheap run away.** Run `agentic=False` for retrieval but apply
-`filters_for` over the union of filters extracted from the sub-questions — decompose for
+`filters_for` over the union of filters extracted from the sub-questions, decompose for
 filter extraction, do not decompose for querying. That separates "decomposition helps
 because it produces better queries" from "decomposition helps because it produces better
 filters". Retrieve-only, ~15 minutes. Not required for a result, but it is the first
@@ -2418,15 +2418,15 @@ this project has measured. Two write-ups quoting different figures for the same 
 read as one of them being stale.
 
 **Macro is the headline everywhere: recall@16 = 0.7403.** Micro is reported alongside it,
-never instead of it, and always labelled. Macro is the mean of per-question recall — it
+never instead of it, and always labelled. Macro is the mean of per-question recall, it
 weights every question equally, which matches how the system is judged. Micro is
 spans-found over spans-total, so it weights multi-span questions more heavily, and the two
 diverge precisely because span counts are unequal.
 
-## Standing rule (generalised): validate on exact match where one exists
+## Rule, generalised: validate on exact match where one exists
 
 There is already a rule about derived pipelines above. Four instances now say it is not
-about pipelines — it is about substitutes of any kind.
+about pipelines: it is about substitutes of any kind.
 
 | the substitute | looked healthy as | failed under |
 |---|---|---|
@@ -2437,17 +2437,17 @@ about pipelines — it is about substitutes of any kind.
 
 In every case a plausible-looking artifact stood in for the real one, and in every case it
 survived aggregate inspection and died under exact comparison. The transfer check that
-*did* hold — Colab against local — held bit-for-bit at 0.00000 across 490 scores, and that
+*did* hold (Colab against local) held bit-for-bit at 0.00000 across 490 scores, and that
 is why it was trustworthy rather than merely encouraging.
 
 **Aggregate similarity is the check that has failed every time in this project. Where an
-exact comparison exists — exact order, exact config, exact score, the exact level the code
-operates at — use it, and treat aggregate agreement as evidence of nothing.**
+exact comparison exists, exact order, exact config, exact score, the exact level the code
+operates at, use it, and treat aggregate agreement as evidence of nothing.**
 
 ## What decomposition buys, measured against a real control
 
-The control arm — `agentic=False`, everything else pinned to the served config,
-retrieve-only, all 202 questions — had never been run. Paired bootstrap over per-question
+The control arm, `agentic=False`, everything else pinned to the served config,
+retrieve-only, all 202 questions, had never been run. Paired bootstrap over per-question
 recall@16, 10,000 rounds, delta = agentic ON minus OFF:
 
 | tier | n | delta | 95% interval | verdict |
@@ -2462,7 +2462,7 @@ interval touching zero and `p_better` of 0.625, which is indistinguishable from 
 The named tripwire was single-span moving too, which would have meant the delta came from
 something other than the split. It did not move.
 
-`route_accuracy` is 0.9485 in both arms, to four decimals — an independent confirmation
+`route_accuracy` is 0.9485 in both arms, to four decimals, an independent confirmation
 that the flag does not touch routing, which was the first thing checked in the source.
 
 **What the number is a claim about.** Not "decomposition is worth +0.077". Turning the flag
@@ -2472,7 +2472,7 @@ off removes three things at once: decomposition, cross-query RRF fusion (with on
 
 The three are **not symmetric**, and the asymmetry biases the result in decomposition's
 favour. Filter coverage measured 75% on the compound question against 99% on
-sub-questions, and that difference is why the year filter was un-rejected and shipped — it
+sub-questions, and that difference is why the year filter was un-rejected and shipped, it
 is a known-positive intervention with independent evidence, and the control arm loses it
 too. So some unknown share of +0.0773 is the filter, and the honest statement is
 **"decomposition, cross-query fusion and per-sub-question filtering together are worth
@@ -2489,7 +2489,7 @@ anywhere.
 ### The filter confound was real and turned out not to matter
 
 The agentic on/off delta was flagged as biased in decomposition's favour, because turning
-the flag off also removes per-sub-question metadata filtering — a known-positive whose
+the flag off also removes per-sub-question metadata filtering, a known-positive whose
 coverage measured 75% on a compound question against 99% on sub-questions. The
 `--agentic-filters-only` arm holds the filters at the sub-question level and retrieves with
 the single original query, which separates the two.
@@ -2512,7 +2512,7 @@ detectable on top.
 **This is not "filtering is worthless."** It is narrower and more interesting: `filters_for`
 on the compound question already captures nearly all the available recall, so the extra 24
 points of *coverage* the sub-questions provide do not convert into *recall*. Coverage was
-the wrong proxy for value — the additional filters land on questions that were already
+the wrong proxy for value, the additional filters land on questions that were already
 being answered, or narrow a pool that was already narrow enough. A component can be
 measurably more thorough and still be worth zero, and the only way to find that out is to
 hold it fixed and measure.
@@ -2526,12 +2526,12 @@ in magnitude, and no amount of reasoning about it would have produced +0.0055.
 The rewritten architecture diagram appeared not to render on GitHub: the mermaid iframe
 measured 180px tall and 0 wide, and a screenshot showed blank space where the picture
 should be. On that evidence the diagram was stripped of its `classDef` styling, cylinder
-and hexagon node shapes, dotted labelled edges, and per-subgraph `direction` overrides —
+and hexagon node shapes, dotted labelled edges, and per-subgraph `direction` overrides:
 the styling that made the evaluation loop visually prominent, which was the one thing the
 diagram was for.
 
-The evidence was worthless. Loading `github.com/mermaid-js/mermaid` — whose README
-diagrams unquestionably render — produced **the same 180px/0-width iframes**. That is how
+The evidence was worthless. Loading `github.com/mermaid-js/mermaid`, whose README
+diagrams unquestionably render, produced **the same 180px/0-width iframes**. That is how
 GitHub's cross-origin viewscreen iframe measures from the outside, whatever is inside it.
 It says nothing about any particular diagram.
 
@@ -2539,14 +2539,14 @@ Two checks had already said the diagram was fine, and both were correct: it pars
 mermaid 11 and under mermaid 10, which is the era GitHub ships. The failing signal was the
 only one without a control behind it, and it was the one I acted on.
 
-**This is the standing rule about substitutes, in a new costume.** An automated page
+**Same substitute problem as the cases above.** An automated page
 measurement stood in for GitHub's renderer; it looked like the real thing, produced a plausible negative, and
 had never been checked against a case with a known answer. The fix is the same one the
 other four instances needed: *before trusting a proxy's verdict, run it against an input
 whose answer you already know.* One navigation to a repo with working diagrams would have
 cost thirty seconds and saved the diagram's styling.
 
-Note also which direction the error ran. The proxy produced a **false negative** — it
+Note also which direction the error ran. The proxy produced a **false negative**, it
 condemned something that worked. The project's earlier substitute failures produced false
 **positives**: set overlap that looked healthy, a gate that passed, a control that looked
 like a control. A bad proxy is not biased toward optimism; it is just uninformative, and
@@ -2559,7 +2559,7 @@ comment is deleted.
 
 ### The XPASS that would have retired the hallucination guard
 
-The judged tier reported `[XPASS(strict)]` on q055 — the tracked Jamie Dimon fabrication —
+The judged tier reported `[XPASS(strict)]` on q055, the tracked Jamie Dimon fabrication,
 which is precisely the signal the marker was built to send: *fixed, remove me*. The
 original q055 note even says so in those words.
 
@@ -2573,16 +2573,16 @@ from the full index. The CI fixture holds 1,903 chunks and does not contain it, 
 fixture the system abstains correctly and the strict xfail flips to XPASS.
 
 Deleting the marker on that evidence would have retired the project's only tracked
-instance of the exact failure the system exists to prevent — and it would have been done
+instance of the exact failure the system exists to prevent, and it would have been done
 for the most persuasive possible reason, which is a green test telling you to.
 
 Two changes. The xfail now applies only when not running against the fixture, so CI stops
 reporting an XPASS it cannot substantiate. And a free test in the every-push tier asserts
 the hallucination is *still present* in the frozen final run, so the marker can only be
-removed once the real corpus agrees — at which point that test fails and tells you to
+removed once the real corpus agrees, at which point that test fails and tells you to
 remove both.
 
-**The general form, which is the fourth variant of this project's standing rule:** a test
+**The general form:** a test
 that encodes a known failure is a claim about a specific system on a specific corpus. Run
 it somewhere else and it can pass for reasons that have nothing to do with the failure
 being fixed. An xfail is as much a validator as an assertion, and needs pinning to the
@@ -2621,12 +2621,12 @@ do, crediting only the named source, and these are the cost of that design.
 `declined_in_prose` (q027, q145) is the model writing `INSUFFICIENT_CONTEXT` partway through
 an answer. `refused()` only checks the prefix, so both count as answered. Left as is: the
 definition is used by every run in history, and changing it would move every abstention
-number. Worth knowing when reading the 13/18 split.
+number. Relevant when reading the 13/18 split.
 
 `partial` (q022, q035, q039, q137, q170, q177, q201) is the real weakness. Every claim
-traces to a passage that was retrieved, but the passages sit next to the question — a
+traces to a passage that was retrieved, but the passages sit next to the question, a
 neighbouring risk factor, a different 2023 complaint, AI risk where the label wants market
-risk — and the answer addresses what it had.
+risk, and the answer addresses what it had.
 
 ### q188: the right filer, the wrong year, every citation valid
 

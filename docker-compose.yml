@@ -1,8 +1,8 @@
 # Five services, three of which are the same image.
 #
 # api, ui, and mlflow all run from `finhelm:local` rather than pulling an upstream MLflow
-# image, because the sqlite tracking store on disk was written by mlflow 3.15.1 — the
-# version pinned in requirements.txt — and a server on a different minor will happily
+# image, because the sqlite tracking store on disk was written by mlflow 3.15.1, the
+# version pinned in requirements.txt, and a server on a different minor will happily
 # migrate that schema forward on first connect. Sharing the image makes the version that
 # reads mlflow.db the same one that wrote it, by construction rather than by vigilance.
 #
@@ -24,7 +24,7 @@ x-app-env: &app-env
   OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
   MLFLOW_TRACKING_URI: http://mlflow:5000
   # The name pgvector_store.py actually reads. It was POSTGRES_DSN in .env and
-  # PGVECTOR_DSN here, and the code reads neither — so every container would have
+  # PGVECTOR_DSN here, and the code reads neither, so every container would have
   # silently used the hardcoded localhost default and talked to itself.
   FINHELM_PG_DSN: postgresql://finhelm:finhelm@postgres:5432/finhelm
 
@@ -58,7 +58,7 @@ services:
     # Explicit rather than inherited from the VM, and measured rather than guessed. A
     # single /ask peaks at 2.694 GiB: bge-base and the cross-encoder resident together,
     # plus the FAISS index and its meta.jsonl, which carries the full chunk text. 2g
-    # looked generous and killed the container mid-request — and `docker inspect` then
+    # looked generous and killed the container mid-request, and `docker inspect` then
     # reported OOMKilled=false, because by the time it is read the field describes the
     # replacement container. Without any limit the VM's OOM killer picks a victim instead,
     # and the victim is not reliably the process that grew.
@@ -133,8 +133,8 @@ services:
       COLLECTOR_OTLP_ENABLED: "true"
     ports:
       - "16686:16686"   # web UI
-      - "4317:4317"     # OTLP/gRPC — what the app exports to
-      - "4318:4318"     # OTLP/HTTP  — published so a host-side process can export too
+      - "4317:4317"     # OTLP/gRPC, what the app exports to
+      - "4318:4318"     # OTLP/HTTP , published so a host-side process can export too
     mem_limit: 512m
     restart: unless-stopped
 
@@ -170,7 +170,7 @@ services:
       - --backend-store-uri=sqlite:////app/mlflow.db
       - --default-artifact-root=/app/mlruns
       # One worker, not the per-CPU default. Measured: four workers hold 2041 MB of
-      # anonymous memory between them — the parent alone is 243 MB — which killed this
+      # anonymous memory between them, the parent alone is 243 MB, which killed this
       # container with exit 137 on a loop while `docker inspect` said OOMKilled=false,
       # because the field describes the container that had just restarted. A tracking
       # server that one developer and one CI job read from does not need four.
@@ -189,7 +189,7 @@ services:
       retries: 3
     # Measured, not guessed: one worker holds 994 MB of anonymous memory steady-state, so
     # 512m and then 1g both died with exit 137 on a restart loop. It is not the shared
-    # image doing it — /proc/1/maps shows mlflow mapping pandas, pyarrow, scipy and numpy
+    # image doing it, /proc/1/maps shows mlflow mapping pandas, pyarrow, scipy and numpy
     # and no torch, transformers, faiss or sklearn at all.
     mem_limit: 1536m
     restart: unless-stopped

@@ -27,14 +27,14 @@ Macro and micro are both here because they diverge once span counts are unequal,
 quoting only the flattering one would be a choice. **Macro is the headline everywhere in
 this project**; micro sits beside it and never replaces it.
 
-The retrieval half of this run is bit-identical to one from two weeks earlier — recall@16,
+The retrieval half of this run is bit-identical to one from two weeks earlier: recall@16,
 both span tiers and micro recall all reproduce to four decimals. That matters more than the
 value itself: it means the ablation was comparing configurations rather than run-to-run
 drift.
 
 Two figures moved between those runs and neither is a finding. MRR shifted +0.0005 while
-recall did not, which is what a rank permutation *inside* the top 16 looks like — recall
-asks whether a span is in the set, MRR asks where. Abstention recall went 0.8571 to 0.9048
+recall did not, which is what a rank permutation *inside* the top 16 looks like. Recall
+asks whether a span is in the set; MRR asks where. Abstention recall went 0.8571 to 0.9048
 on the labels of the time, which is one of 21 negatives changing its mind. With 19
 negatives now, a single flip is 5.3 points, and the 95% interval on 18 of 19 is roughly
 75% to 99%.
@@ -74,8 +74,8 @@ re-score in a `rescored` block. Before the fix: recall@16 0.7403, abstention rec
 
 ## Architecture
 
-The serving path is the top two thirds. The evaluation loop at the bottom is the part worth
-looking at — it is what turns the rest from a demo into something with numbers attached.
+The serving path is the top two thirds. The evaluation loop at the bottom is what turns
+the rest from a demo into something with numbers attached.
 
 ```mermaid
 flowchart TB
@@ -115,7 +115,7 @@ flowchart TB
     ANS --> RUN
 ```
 
-**Corpus:** 10 institutions — AXP, BAC, C, COF, DFS, GS, JPM, SYF, USB, WFC — as 24,650
+**Corpus:** 10 institutions (AXP, BAC, C, COF, DFS, GS, JPM, SYF, USB, WFC) as 24,650
 filing chunks plus 18,498 CFPB complaint chunks.
 
 **Serving:** FastAPI, a Streamlit demo, OpenTelemetry spans to Jaeger, MLflow tracking.
@@ -131,11 +131,11 @@ portable across chunking strategies, so a golden set keyed on one cannot compare
 retrieved chunk counts as a hit when the document matches exactly, it shares a contiguous
 10-word run with the gold snippet, and its figures do not contradict the gold span's.
 
-**Retrievability ceiling is 1.0000** across all three chunking strategies — every gold span
+**Retrievability ceiling is 1.0000** across all three chunking strategies: every gold span
 is reachable by some chunk. Low recall is therefore real retrieval failure, not a metric
 artifact. Without that check the recall number means nothing.
 
-**Golden set: 202 questions, 250 gold spans** — 116 single-hop, 42 multi-hop, 25 temporal,
+**Golden set: 202 questions, 250 gold spans.** 116 single-hop, 42 multi-hop, 25 temporal,
 11 unanswerable-but-in-domain, 8 out-of-scope. Provenance, from the `provenance` field:
 
 - 181 drafted by Claude Opus (`scripts/draft_golden.py`) from sampled passages. Every gold
@@ -154,8 +154,8 @@ meaningless, so the 19 negatives are scored by the abstention pair instead. Both
 get reported: a system that refuses everything scores perfectly on one and catastrophically
 on the other.
 
-**The judge is a different model family from the generator** — Gemini judging Claude,
-enforced in `Config.__post_init__` — because same-family judging produces self-preference
+**The judge is a different model family from the generator**, Gemini judging Claude,
+enforced in `Config.__post_init__`, because same-family judging produces self-preference
 bias.
 
 **Comparisons use a paired bootstrap over questions, not point estimates.** This is the
@@ -173,12 +173,12 @@ estimates was noise with an ordering printed on it.
 
 The plan was two tiers with the retrieval eval on every push, because a gate that only
 re-reads recorded numbers gates nothing about the code in the diff. It does run a real eval,
-against a committed 1,889-chunk fixture carved out of the real corpus —
+against a committed 1,889-chunk fixture carved out of the real corpus.
 `scripts/make_ci_fixture.py` selects gold-bearing chunks using the metric's own `is_hit`, so
 the fixture cannot disagree with the metric that reads it.
 
 It just cannot run on every push. On a 2-vCPU runner the first attempt was cancelled at
-question 27 of 40 by a 25-minute timeout, at 49 seconds per question against ~5 locally — a
+question 27 of 40 by a 25-minute timeout, at 49 seconds per question against ~5 locally, a
 33-minute projection. So the eval moved to pull requests. What is lost: a push straight to a
 branch with no PR gets no retrieval check. What is kept: the check, when it runs, is real.
 
@@ -187,20 +187,20 @@ faiss-cpu and torch each load an OpenMP runtime into one process and dense retri
 segfaults. Linux wheels carry no such conflict, so importing that workaround into CI bought
 nothing and pinned the cross-encoder to one of two vCPUs.
 
-The floor of 0.80 against a measured 0.8500 is a tripwire, not a quality number — retrieval
+The floor of 0.80 against a measured 0.8500 is a tripwire, not a quality number: retrieval
 against 1,889 chunks is far easier than against 24,650.
 
 The gate is built so it cannot pass quietly:
 
 - an **unknown metric name is a failure**, not a pass. The obvious threshold to write is
-  `recall_at_5`, which this system does not produce — it serves top-k=16 — so a lenient
+  `recall_at_5`, which this system does not produce, since it serves top-k=16. A lenient
   lookup would sit green forever while reading exactly like a gate
 - a metric present but `None` fails, because "not measured" is not "passed"
 - `--fail-on-fallback` catches a missing index being silently substituted, which would mean
   the gate measured a different system
 - `--deterministic-only` asserts `llm.USAGE` is empty afterwards rather than trusting the
-  flags meant to arrange it — decomposition calls a model and catches every exception, so a
-  keyless run would not error, it would quietly stop splitting multi-hop questions
+  flags meant to arrange it. Decomposition calls a model and catches every exception, so a
+  keyless run would not error; it would stop splitting multi-hop questions
 
 ### Proof the gate is not decorative
 
@@ -221,8 +221,8 @@ Multi-span is hit about two and a half times as hard as single-span, −0.375 ag
 evidence from several documents.
 
 An earlier version of this table showed single-span recall as *identical* across both arms.
-That was a property of the fixture, not of the change. When the fixture was rebuilt — the
-judged tier turned out to be missing evidence for 7 of its 12 questions — the gold chunk for
+That was a property of the fixture, not of the change. When the fixture was rebuilt (the
+judged tier turned out to be missing evidence for 7 of its 12 questions) the gold chunk for
 a single-span question was no longer always inside the top 2, so cutting the budget costs
 that tier too. The claim was true of one artifact, and needed re-measuring when the artifact
 changed rather than repeating. The fixture was rebuilt once more after the q055 and q063
@@ -249,12 +249,12 @@ The interesting output is a negative result about the screen itself:
 | timely response | 80 | **6 (8%)** | 0.027 / 0.009 |
 
 A screen that flags two thirds of what it tests is not detecting anomalies. The obvious
-suspicion is a power artifact — enough complaints and trivial gaps reach significance — and
-that is not what is happening: flagged cells differ by a median of sixteen percentage
+suspicion is a power artifact, enough complaints making trivial gaps significant, and that
+is not what is happening: flagged cells differ by a median of sixteen percentage
 points, at similar cell sizes to the quiet ones. The effects are large and real.
 
 **The comparison group is wrong.** CFPB's product taxonomy has four values, and "Debt
-collection" contains national banks, debt buyers and credit bureaus — businesses whose role
+collection" contains national banks, debt buyers and credit bureaus: businesses whose role
 in a complaint differs so fundamentally that a shared relief rate is not a meaningful
 expectation. The same screen on timely response flags 8%, because timeliness is a
 procedural obligation that means the same thing for every firm. Same statistics, same cells;
@@ -264,7 +264,7 @@ share.
 
 [`analytics/METHODOLOGY.md`](../analytics/METHODOLOGY.md) covers ecological inference,
 selection bias, confounding, the SR 11-7 and ECOA/Reg B context, and the six things a
-fair-lending reviewer would demand next — none of which public complaint data supports. The
+fair-lending reviewer would demand next, none of which public complaint data supports. The
 ACS/ZCTA geographic join is deliberately not built: it would be the most misreadable output
 in the repository, and doing it responsibly requires the caveats to travel with every
 number, which a CSV does not do.
@@ -273,12 +273,12 @@ number, which a CSV does not do.
 
 The `VectorStore` protocol makes the backend a config change rather than a rewrite. A
 benchmark against Postgres + pgvector on identical vectors found latency a wash at this size
-— p50 1.6 ms FAISS against 1.7 ms pgvector. The real difference is filtering: FAISS has no
+at p50 1.6 ms FAISS against 1.7 ms pgvector. The real difference is filtering: FAISS has no
 `WHERE` clause, so it over-fetches and post-filters, and at 0.1% selectivity it returns **0
 results where 26 matching rows exist**, silently. Postgres applies the predicate in the
 query.
 
-**Kubernetes manifests** are in [`deploy/k8s/`](../deploy/k8s/) — Deployment, Service, HPA,
+**Kubernetes manifests** are in [`deploy/k8s/`](../deploy/k8s/): Deployment, Service, HPA,
 ConfigMap, Secret, PVC and PDB, validated against a local `kind` cluster and torn down. They
 are not what runs the demo; for single-user traffic a cluster is unjustified cost. They
 exist so the scaling path is concrete rather than hypothetical.
@@ -291,25 +291,25 @@ check ran on `busybox`. The compose stack is what verifies the real container en
 
 The finding worth keeping there is a silent one. `ReadOnlyMany` is correct for production,
 since every replica reads the same immutable index, but kind's default StorageClass cannot
-serve it — and the failure tells you nothing. The PVC stays `Pending` reporting only
+serve it, and the failure tells you nothing. The PVC stays `Pending` reporting only
 "waiting for first consumer", pods stay `Pending`, and no event on either object ever
 mentions the access mode. Changing that one field to `ReadWriteOnce` bound it in six
 seconds.
 
-**The live demo** runs on a Hugging Face Space ([`deploy/hf-space/`](../deploy/hf-space/)) —
+**The live demo** runs on a Hugging Face Space ([`deploy/hf-space/`](../deploy/hf-space/)),
 a Docker Space carrying its own 209 MB index, because there is no API backend behind it and
 the hybrid retriever needs BM25 as well as FAISS. Its image installs a serving-only
 dependency set: the eval harness, MLflow, ragas and the langchain stack they pull in are
 about 1.5 GB of wheels a demo never executes, and a Space rebuilds on every push.
 
 Two things worth knowing if you deploy something similar. Hugging Face no longer offers free
-Python Spaces — only Static Spaces are free, and both SDKs that execute Python require a PRO
+Python Spaces: only Static Spaces are free, and both SDKs that execute Python require a PRO
 subscription. And the Space README's front matter enforces `short_description ≤ 60
 characters`, checked by a pre-receive hook *after* the LFS upload completes, so a
 63-character description costs you the full 494 MB push before it fails.
 
-**Cloud Run configs** are in [`deploy/cloudrun/`](../deploy/cloudrun/) and are not deployed
-— the Space made them unnecessary. Their cold-start figures come from local measurement
+**Cloud Run configs** are in [`deploy/cloudrun/`](../deploy/cloudrun/) and are not deployed;
+the Space made them unnecessary. Their cold-start figures come from local measurement
 rather than observation, and the named risk stands: 5.76 GB is large for scale-to-zero.
 
 Still to build: incremental re-indexing as new filings land, and a cache keyed on question
@@ -322,7 +322,7 @@ plus config.
 - **181 of 202 golden questions were drafted by a Claude model and checked by script, not
   by a person.** 54 of those predate the triviality and duplicate checks. The headline
   number includes all 202.
-- **About half the multi-span questions yoke arbitrary facts** — two gold snippets sharing
+- **About half the multi-span questions yoke arbitrary facts**: two gold snippets sharing
   under 10% of their content. That is a property of how the set was generated, and it partly
   explains the 0.597 multi-span recall.
 - **One embedding model was evaluated end to end.** `bge-large` was never indexed.

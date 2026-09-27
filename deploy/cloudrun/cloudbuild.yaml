@@ -1,6 +1,6 @@
 # Build in Google's infrastructure rather than locally.
 #
-# Not a preference — the image is 5.76 GB, and pushing that from a home connection is
+# Not a preference: the image is 5.76 GB, and pushing that from a home connection is
 # 20–40 minutes every time. Cloud Build pulls the source, builds there, and pushes to
 # Artifact Registry inside Google's network. It also means a machine with no Docker
 # installed can ship a release.

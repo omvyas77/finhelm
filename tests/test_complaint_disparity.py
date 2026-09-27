@@ -68,7 +68,7 @@ def test_benjamini_hochberg_drops_a_raw_hit_when_the_family_is_mostly_null():
     It finds the largest rank i where p_(i) <= (i/m) * alpha and rejects every hypothesis
     at or below it. Two consequences that intuition gets backwards:
 
-      * If every p-value in the family is below alpha, BH removes **nothing** — the
+      * If every p-value in the family is below alpha, BH removes **nothing**, the
         largest p already satisfies the rank-m threshold of (m/m) * alpha = alpha. A
         family of twenty p-values all at 0.04 is rejected in full.
       * BH only drops a raw hit when large p-values elsewhere in the family pull the
@@ -95,7 +95,7 @@ def test_an_obvious_disparity_is_flagged_and_matching_cells_are_not():
     """The outlier is kept small relative to the pool on purpose.
 
     The first version used one outlier against two normal companies, and every company got
-    flagged — because with a three-company pool the outlier is a third of everyone else's
+    flagged, because with a three-company pool the outlier is a third of everyone else's
     baseline and drags it far from the normal rate. That is not a bug; it is the module's
     headline limitation reproducing in miniature, and it is why the peer group matters more
     than the statistics. Here the outlier is 60 complaints against 2,000, so it moves the
@@ -111,8 +111,8 @@ def test_an_obvious_disparity_is_flagged_and_matching_cells_are_not():
     assert not {c for c in flagged if c.startswith("NORMAL")}
 
 
-# data/raw/ is gitignored — the CFPB extract is a rebuildable artifact, like the FAISS
-# index — so a runner has no copy of it. The first version of these three tests called
+# data/raw/ is gitignored, the CFPB extract is a rebuildable artifact, like the FAISS
+# index, so a runner has no copy of it. The first version of these three tests called
 # load() directly and passed locally while failing in CI on a missing file: the same
 # "the local filesystem papers over it" failure as the PR gate that scored the wrong
 # config for the life of its file.

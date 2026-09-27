@@ -10,7 +10,7 @@ MLflow is for exploration and history.jsonl is the machine-readable contract. Ke
 separate means a broken or missing MLflow server never blocks the PR gate.
 
 Questions are evaluated sequentially, on purpose. Running them concurrently would roughly
-halve wall-clock time but makes the p50/p95 latency numbers meaningless — they would
+halve wall-clock time but makes the p50/p95 latency numbers meaningless, they would
 measure contention between eval workers rather than the latency a user would see. Latency
 is a headline number in the ablation table, so it has to be measured under the conditions
 it claims to describe.
@@ -50,7 +50,7 @@ def hit_to_dict(hit) -> dict:
     """Flatten a Hit into what the metrics need.
 
     doc_id and text come from metadata; chunk_id and score are kept for failure analysis
-    (which chunk won, and by how much) but are never used for scoring — see the header of
+    (which chunk won, and by how much) but are never used for scoring, see the header of
     evals/metrics.py for why chunk_id cannot be ground truth.
     """
     return {
@@ -80,10 +80,10 @@ def evaluate_one(question: dict, cfg: Config, retrieve_only: bool) -> dict:
             "generation_ms": 0,
             # Recorded because "did decomposition actually fire?" is otherwise
             # unanswerable from the artifact. The first attempt to measure agentic mode
-            # read this field, found it absent, and concluded decomposition never ran —
+            # read this field, found it absent, and concluded decomposition never ran,
             # while cost per query had risen 7x proving it had.
             "sub_questions": list(found.sub_questions),
-            # The pre-rerank candidate pool, in rank order, as ids only — carrying its
+            # The pre-rerank candidate pool, in rank order, as ids only, carrying its
             # text would add ~9 MB per result file.
             #
             # chunk_ids and not just doc_ids: whether the right *document* reached the
@@ -147,8 +147,8 @@ def enforce(summary: dict, specs: list[str]) -> list[str]:
     reading, in the workflow file, exactly like a gate. A threshold you cannot fail is
     indistinguishable from no threshold at all.
 
-    Likewise a metric present but None — recall on a run with no gold spans, citation
-    validity on a retrieve-only run — is a failure. It means the gate did not measure
+    Likewise a metric present but None, recall on a run with no gold spans, citation
+    validity on a retrieve-only run, is a failure. It means the gate did not measure
     what it claims to measure.
     """
     failures = []
@@ -188,7 +188,7 @@ def summarize(records: list[dict], cfg: Config, k: int) -> dict:
     # across runs, and the ablation table needs the retrieval half specifically.
     #
     # `latency_ms` is retrieval + generation, so a --retrieve-only run and a generating
-    # run of the *same retrieval config* report wildly different p50s — measured here at
+    # run of the *same retrieval config* report wildly different p50s, measured here at
     # 1751ms vs 7963ms. Both numbers are correct; putting them in one column is not.
     # Without this split, a generation run silently supersedes its retrieve-only twin in
     # the ablation table and the winning cell reads as 4.5x slower than its neighbours,
@@ -212,7 +212,7 @@ def log_mlflow(cfg: Config, summary: dict, records: list[dict], path: Path,
     try:
         import mlflow
     except ImportError:
-        print("  (mlflow not installed — skipping tracking)")
+        print("  (mlflow not installed, skipping tracking)")
         return
 
     try:
@@ -240,11 +240,11 @@ def log_mlflow(cfg: Config, summary: dict, records: list[dict], path: Path,
     except Exception as exc:  # noqa: BLE001 - tracking must never break the run
         # Loud, because quiet cost the whole record of the first ablation. MLFLOW_TRACKING_URI
         # pointed at http://localhost:5000 with no server behind it, and on macOS port
-        # 5000 is held by Control Center's AirPlay receiver — which answers, with 403.
+        # 5000 is held by Control Center's AirPlay receiver, which answers, with 403.
         # So this did not fail like an unreachable host, it failed like a live server
         # refusing us, one dim parenthetical per run, for all eighteen ablation cells.
         # Every one of them was logged nowhere and nobody noticed for two days.
-        print(f"\n  !! MLFLOW LOGGING FAILED — this run is NOT tracked: {exc}")
+        print(f"\n  !! MLFLOW LOGGING FAILED, this run is NOT tracked: {exc}")
         print(f"  !! tracking uri: {mlflow.get_tracking_uri()}")
         print("  !! the result file is still safe; re-attach it with scripts/backfill_mlflow.py\n")
 
@@ -257,7 +257,7 @@ def main() -> None:
     ap.add_argument("--rerank", action="store_true")
     # Defaults to whatever the generator is actually given (cfg.top_k_context), not a
     # fixed 5. Reporting recall@5 while feeding the model 8 chunks understates the system
-    # for no reason — measured at 0.4558 against 0.4917 for the same run — and the gap
+    # for no reason, measured at 0.4558 against 0.4917 for the same run, and the gap
     # would grow silently with any change to top_k_context.
     ap.add_argument("--k", type=int, default=None,
                     help="k for recall@k (default: cfg.top_k_context)")
@@ -273,8 +273,8 @@ def main() -> None:
     ap.add_argument("--no-filter-by-issuer", action="store_true",
                     help="control arm: search every issuer's filings, as before")
     ap.add_argument("--rerank-per-subquestion", action="store_true")
-    # The one component never varied. Everything else in the pipeline — embedder, chunk
-    # text, fusion, query shape, issuer filter — has been swapped at least once.
+    # The one component never varied. Everything else in the pipeline, embedder, chunk
+    # text, fusion, query shape, issuer filter, has been swapped at least once.
     ap.add_argument("--rerank-model", default=None)
     ap.add_argument("--chunk-tokens", type=int, default=None)
     # Pinned to the pool width it is tuned for: rrf_k=20 beats 60 at every per-query width
@@ -289,7 +289,7 @@ def main() -> None:
                     help="use the contextual-header index (requires *_ctx built)")
     ap.add_argument("--agentic-filters-only", action="store_true",
                     help="decompose to extract metadata filters, then retrieve with the "
-                         "single original query — isolates the filter half of "
+                         "single original query, isolates the filter half of "
                          "decomposition from the query half")
     ap.add_argument("--agentic", action="store_true",
                     help="decompose multi-hop questions before retrieving")
@@ -441,8 +441,8 @@ def main() -> None:
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "config": asdict(cfg),
             # Recorded explicitly rather than inferred downstream from a near-zero
-            # cost_usd_per_query. Retrieve-only runs are not free — the router still makes
-            # an LLM call — so "cost is zero" was never the right test, and a threshold
+            # cost_usd_per_query. Retrieve-only runs are not free, the router still makes
+            # an LLM call, so "cost is zero" was never the right test, and a threshold
             # over cost would need re-tuning every time the router or pricing changed.
             "retrieve_only": args.retrieve_only,
             "strategy_fallbacks": fallbacks,
@@ -456,7 +456,7 @@ def main() -> None:
         print(f"  {key:<22} {'-' if value is None else f'{value:.4f}'}")
 
     for fallback in fallbacks:
-        print(f"  ! {fallback['collection']} has no '{fallback['requested']}' index — "
+        print(f"  ! {fallback['collection']} has no '{fallback['requested']}' index, "
               f"ran as '{fallback['used']}'")
 
     print(f"\nwrote {path}")
@@ -469,7 +469,7 @@ def main() -> None:
     # The claim "this tier is free" checked against what actually happened, not against
     # the flags that were meant to arrange it. Every model call in this codebase appends
     # to llm.USAGE, so one assertion covers routing, decomposition, generation and
-    # anything added later — a new call site on the retrieval path fails the cheap tier
+    # anything added later, a new call site on the retrieval path fails the cheap tier
     # loudly instead of quietly putting API spend on every push.
     if args.deterministic_only and llm.USAGE:
         models = sorted({record.get("model", "?") for record in llm.USAGE})
@@ -481,12 +481,12 @@ def main() -> None:
     # A missing index is not an error anywhere else in this codebase: _resolve_strategy
     # substitutes `fixed` and records the substitution, which is the right behaviour for
     # an ablation over a corpus that was only ever chunked one way. It is the wrong
-    # behaviour for a gate. Point the CI config at an index that is not there — change the
-    # embedding model, rename a strategy — and the run silently measures a different
+    # behaviour for a gate. Point the CI config at an index that is not there, change the
+    # embedding model, rename a strategy, and the run silently measures a different
     # system, clears its threshold, and reports green.
     # `complaints` is the standing exception and has to be named, not assumed. It exists
-    # only as `fixed` on purpose — complaint narratives are a few hundred words and are
-    # already close to one chunk, so re-chunking them tests nothing — which means a bare
+    # only as `fixed` on purpose, complaint narratives are a few hundred words and are
+    # already close to one chunk, so re-chunking them tests nothing, which means a bare
     # --fail-on-fallback can never pass. Requiring the exception to be spelled out keeps
     # the check sharp for the case it is actually for: filings falling back, which means
     # the index the config names is missing and the gate is measuring something else.

@@ -1,7 +1,7 @@
 """Dense retrieval: embed the query, ask the store for top-k.
 
 Deliberately thin. All backend-specific behaviour lives behind the VectorStore protocol,
-so this function never learns whether it is talking to FAISS or pgvector — which is what
+so this function never learns whether it is talking to FAISS or pgvector, which is what
 makes the FAISS-to-pgvector swap a config change rather than a rewrite.
 """
 

@@ -1,15 +1,12 @@
-"""Where the corpus and the indexes live.
+"""Corpus and index locations, overridable with FINHELM_DATA_DIR.
 
-One place, and overridable, because CI cannot use the real ones. The corpus is 192 MB of
-chunk parquet and the indexes are 961 MB; both are gitignored build artifacts, so a
-checkout on a runner has neither. `FINHELM_DATA_DIR` lets the gate point at the small
-committed fixture in data/ci without copying files over the developer's real corpus —
-which is also how this gets tested locally without destroying a corpus that takes 85
-minutes to rebuild.
+CI cannot use the real ones: the chunk parquet is 192 MB and the indexes 961 MB, and both
+are gitignored build artifacts. FINHELM_DATA_DIR points a run at the committed fixture in
+data/ci instead.
 
-Read at import, not per call: these are module-level constants elsewhere in the codebase
-and making them dynamic would mean a store loaded before the variable was set and one
-loaded after could disagree about which corpus they are on.
+Read once at import. These are module-level constants elsewhere in the codebase, so
+resolving them per call would let a store loaded before the variable was set and one
+loaded after disagree about which corpus they are on.
 """
 
 from __future__ import annotations

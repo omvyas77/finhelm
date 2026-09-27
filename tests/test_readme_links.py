@@ -1,12 +1,12 @@
 """Every relative link in every markdown file must resolve.
 
 The earlier version of this checked README.md and deploy/k8s/README.md only, and missed two
-broken links in docs/METHOD.md — introduced when that file was split out of the README and
+broken links in docs/METHOD.md, introduced when that file was split out of the README and
 a rewrite rule applied `../` to paths that were already relative, producing `../../`. The
 lesson is the narrow one: a check scoped to the files you were thinking about at the time
 does not cover the file you add next month.
 
-Only relative links are checked. External URLs are excluded on purpose — a test that fails
+Only relative links are checked. External URLs are excluded on purpose, a test that fails
 because GitHub is briefly unreachable is a test that gets deleted.
 """
 

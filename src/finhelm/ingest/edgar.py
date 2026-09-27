@@ -1,4 +1,4 @@
-"""SEC EDGAR ingestion — 10-K / 10-Q / 8-K for ten financial-sector companies.
+"""SEC EDGAR ingestion, 10-K / 10-Q / 8-K for ten financial-sector companies.
 
 Rate limits: SEC blocks IPs that exceed 10 req/s for ~10 minutes, and returns 403
 for a missing or generic User-Agent. Both are handled here; do not bypass either.
@@ -182,7 +182,7 @@ _IX_HIDDEN = re.compile(r"(?is)<ix:hidden\b.*?</ix:hidden>")
 
 def to_text(html: str) -> str:
     """Strip markup. Dense numeric tables become sludge in plain text, so drop them."""
-    # Inline-XBRL filings carry a hidden block of tagged facts — CIK, axis members,
+    # Inline-XBRL filings carry a hidden block of tagged facts, CIK, axis members,
     # repeated dates, the company name. It renders as nothing but survives text
     # extraction as a short, keyword-dense chunk, which BM25's length normalisation then
     # ranks *above* real prose for any query naming a company.
@@ -203,7 +203,7 @@ def to_text(html: str) -> str:
             tbl.decompose()
 
     # separator=" " is load-bearing: selectolax joins block-level text with no delimiter,
-    # so "UNITED STATES</div><div>SECURITIES" extracts as "STATESSECURITIES" — a token no
+    # so "UNITED STATES</div><div>SECURITIES" extracts as "STATESSECURITIES", a token no
     # query will match and no tokenizer can split back apart.
     return _tighten(" ".join(tree.text(separator=" ").split()))
 
@@ -239,7 +239,7 @@ def sections(text: str) -> dict[str, str]:
 
     Every item heading appears at least twice: once in the table of contents and
     once at the real section. The TOC match comes first and captures only a page
-    range, so we scan all matches and keep the longest — the body always dwarfs
+    range, so we scan all matches and keep the longest, the body always dwarfs
     the TOC entry.
     """
     low, out = text.lower(), {}
@@ -266,7 +266,7 @@ def main() -> None:
         for ticker in TICKERS:
             cik = ciks.get(ticker) or DELISTED_CIKS.get(ticker)
             if cik is None:
-                print(f"{ticker}: not in SEC ticker map and no CIK override — skipped", flush=True)
+                print(f"{ticker}: not in SEC ticker map and no CIK override, skipped", flush=True)
                 continue
             filings = list_filings(ticker, cik)
             print(f"{ticker}: {len(filings)} filings", flush=True)
@@ -312,7 +312,7 @@ def main() -> None:
     print(f"filings by form: {form_counts}")
     print(
         f"10-K section extraction: {tenk_parsed}/{tenk_total} ({rate:.0%})"
-        " — rest fall back to full_document"
+        ", rest fall back to full_document"
     )
 
 

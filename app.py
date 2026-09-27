@@ -1,7 +1,7 @@
 """Streamlit demo.
 
 Written for someone who has never seen the project. The point of the interface is not the
-answer — it is showing the evidence the answer was built from, because a RAG system that
+answer: it is showing the evidence the answer was built from, because a RAG system that
 hands you a paragraph and hides its sources is asking to be trusted rather than checked.
 
 Talks to the FastAPI service when FINHELM_API_URL is set (how compose wires it) and calls
@@ -21,8 +21,8 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parent
 # src/, not the repo root. Adding the root made `src.finhelm` importable as a namespace
 # package, and importing the same code under two names gives you two module objects: two
-# CONFIGs, two sets of lru_caches, and — in a container where PYTHONPATH already points at
-# /app/src — a second copy of the models resident in memory.
+# CONFIGs, two sets of lru_caches, and, in a container where PYTHONPATH already points at
+# /app/src, a second copy of the models resident in memory.
 sys.path.insert(0, str(ROOT / "src"))
 
 API_URL = os.getenv("FINHELM_API_URL")
@@ -74,11 +74,11 @@ EXAMPLES = [
      "related to the Silicon Valley Bank failure?",
      "Needs evidence from two different filings. It splits the question in two, "
      "retrieves for each half, then answers."),
-    ("Declines — not disclosed",
+    ("Declines: not disclosed",
      "What is Capital One's customer acquisition cost per new credit card account?",
      "A reasonable-sounding question about a number companies do not publish. "
      "It should refuse rather than estimate."),
-    ("Declines — not in corpus",
+    ("Declines: not in corpus",
      "What guidance did Tesla give for vehicle deliveries in 2026?",
      "Tesla is not in this corpus at all. Different reason for refusing, same honesty."),
 ]
@@ -132,9 +132,9 @@ with st.sidebar:
     st.markdown(
         "Ask a question about a US bank's SEC filings, Federal Reserve statements, or "
         "consumer complaints. The system:\n\n"
-        "1. **Decides where to look** — company filings or consumer complaints\n"
+        "1. **Decides where to look**: company filings or consumer complaints\n"
         "2. **Splits the question** if it needs facts from more than one document\n"
-        "3. **Searches twice** — by meaning and by keyword — and merges the results\n"
+        "3. **Searches twice**: by meaning and by keyword, then merges the results\n"
         "4. **Re-reads the best candidates** closely and keeps the top 16\n"
         "5. **Answers using only those passages**, citing the ones it used\n\n"
         "If the passages do not contain the answer, it says so instead of guessing."
@@ -208,7 +208,12 @@ if submitted and question.strip():
         try:
             result = ask(question.strip(), agentic)
         except Exception as exc:
-            st.error(f"Request failed: {type(exc).__name__}: {exc}")
+            # The detail goes to the container log, not to the page: a visitor can do
+            # nothing with a traceback, and an upstream error message is not theirs to
+            # read. The operator gets it from `docker logs` or the Space's log tab.
+            print(f"ask() failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+            st.error("Something went wrong answering that. Try again in a moment, or "
+                     "run it yourself from the repository.")
             st.stop()
 
     if result["abstained"]:
@@ -216,7 +221,7 @@ if submitted and question.strip():
         st.markdown(result["answer"])
         st.caption(
             "This is the intended behaviour when the retrieved passages do not contain "
-            "the answer — the alternative is a confident, invented figure."
+            "the answer: the alternative is a confident, invented figure."
         )
     else:
         st.success("**Answer**")
@@ -234,7 +239,7 @@ if submitted and question.strip():
 
     a, b, c, d = st.columns(4)
     a.metric("Searched", result["route"].replace("+", " + "))
-    b.metric("Sub-questions", len(result.get("sub_questions") or []) or "—")
+    b.metric("Sub-questions", len(result.get("sub_questions") or []) or "\u2014")
     c.metric("Retrieval", f"{result['retrieval_ms'] / 1000:.1f}s")
     d.metric("Answering", f"{result['generation_ms'] / 1000:.1f}s")
     if result.get("sub_questions"):

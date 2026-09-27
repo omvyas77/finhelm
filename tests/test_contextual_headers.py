@@ -31,7 +31,7 @@ def test_header_names_issuer_period_and_section():
 
 def test_fomc_and_cfpb_never_render_an_unknown_issuer():
     """Both sources have a null ticker. The generic branch would label them 'Unknown
-    issuer', which is worse than no header at all — it puts the same misleading token
+    issuer', which is worse than no header at all, it puts the same misleading token
     into 1,339 filing vectors and all 18,498 complaint vectors."""
     for row in (FOMC, CFPB):
         assert "Unknown" not in header(row)
@@ -54,7 +54,7 @@ def test_header_is_prepended_not_appended():
 
 def test_contextualizing_never_changes_is_hit():
     """The header is applied to embedding input only. If it ever reached the stored text
-    it would still match gold n-grams — so this would pass — but it would also enter the
+    it would still match gold n-grams, so this would pass, but it would also enter the
     BM25 index and make every JPM chunk match the query 'JPMorgan' equally. This pins the
     property that matters: adding a header cannot flip a gold-span judgement either way.
     """

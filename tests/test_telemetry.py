@@ -1,7 +1,7 @@
 """Tracing must cost nothing when no collector is listening.
 
 `.env` carries an OTLP endpoint so docker-compose can wire Jaeger, which means every
-process importing finhelm sees the variable set — including the eval harness, offline,
+process importing finhelm sees the variable set, including the eval harness, offline,
 thousands of times. The first implementation installed the exporter on the strength of that
 variable alone and the batch processor then retried with exponential backoff on every
 export, printing a wall of transient errors and adding seconds per run.
@@ -73,7 +73,7 @@ def test_port_selects_the_protocol(endpoint, grpc):
 def test_service_name_comes_from_the_environment(monkeypatch):
     """Compose sets OTEL_SERVICE_NAME per service. Before this, setup() hardcoded
     "finhelm", so api and ui registered under one name and their spans landed in a single
-    undifferentiated pile in Jaeger — which matters precisely because three compose
+    undifferentiated pile in Jaeger, which matters precisely because three compose
     services run the same image."""
     from finhelm.telemetry import resolve_service_name
 

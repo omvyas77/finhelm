@@ -6,7 +6,7 @@
 #   bash deploy/hf-space/push_space.sh <your-hf-username>
 #
 # Then add ANTHROPIC_API_KEY as a Space *secret* in the Space's Settings page. It is the
-# only credential the Space needs — generation is the only thing that calls a model, and
+# only credential the Space needs, generation is the only thing that calls a model, and
 # the judge never runs here.
 set -euo pipefail
 

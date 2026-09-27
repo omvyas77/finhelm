@@ -39,7 +39,7 @@ different cadence than the code, and baking it means every code change re-pushes
 mount is read-only because nothing writes it and a read-only mount makes that structural.
 
 **`containerConcurrency: 1`.** The default is 80. This service holds an embedding model
-and a cross-encoder in memory and peaks at 2.694 GiB serving a single question — two
+and a cross-encoder in memory and peaks at 2.694 GiB serving a single question, so two
 concurrent requests on one instance is an OOM, not throughput. Cloud Run's own scaling
 handles concurrency by adding instances.
 
@@ -53,7 +53,7 @@ not read as a broken one.
 No GCP project or billing account exists for this yet, so **none of these commands have
 been run** and no live URL exists. What is verified is the thing underneath: the same
 image runs the five-service compose stack locally and answers real questions end to end
-with citations. What is unverified is everything specific to Cloud Run — GCS FUSE mount
+with citations. What is unverified is everything specific to Cloud Run: GCS FUSE mount
 behaviour under `gen2`, actual cold-start time, and whether the 5.76 GB image pull sits
 inside the request timeout on a cold instance.
 

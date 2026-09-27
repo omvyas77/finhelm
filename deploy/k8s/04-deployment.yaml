@@ -65,7 +65,7 @@ spec:
               port: http
             periodSeconds: 10
             failureThreshold: 30
-          # liveness: is the process wedged. Deliberately NOT gated on index presence — a
+          # liveness: is the process wedged. Deliberately NOT gated on index presence, a
           # missing volume is not something a restart fixes, and restarting on it turns a
           # misconfiguration into a crashloop that hides the real cause.
           livenessProbe:

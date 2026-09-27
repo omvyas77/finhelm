@@ -2,7 +2,7 @@
 
 Exists to make the backend a configuration choice rather than a rewrite, and to have a
 real answer to "what happens when the corpus outgrows a flat index". The interesting
-comparison is not raw speed — FAISS wins that at this size — but metadata filtering.
+comparison is not raw speed, FAISS wins that at this size, but metadata filtering.
 
 FAISS has no notion of a WHERE clause. `faiss_store.search` post-filters: it over-fetches
 `k * FILTER_OVERFETCH` candidates and discards the ones that do not match, which means a
@@ -58,7 +58,7 @@ class PgVectorStore:
                 );
             """)
             # HNSW over cosine distance, matching the FAISS index, which stores normalised
-            # vectors and searches by inner product — equivalent ordering for unit vectors.
+            # vectors and searches by inner product, equivalent ordering for unit vectors.
             cur.execute(f"""
                 CREATE INDEX IF NOT EXISTS {self.table}_embedding_idx
                 ON {self.table} USING hnsw (embedding vector_cosine_ops);
@@ -97,8 +97,8 @@ class PgVectorStore:
     def search(self, vector: np.ndarray, k: int, filters: dict | None = None) -> list[Hit]:
         """Nearest neighbours, with the filter applied as a predicate rather than after.
 
-        The three filter shapes mirror stores.base.matches exactly — scalar equality,
-        membership, and {"prefix": ...} — because a filter that means one thing against
+        The three filter shapes mirror stores.base.matches exactly, scalar equality,
+        membership, and {"prefix": ...}, because a filter that means one thing against
         FAISS and another against Postgres would make the backends silently
         non-interchangeable, which is the whole point of the protocol.
         """
