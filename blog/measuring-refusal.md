@@ -208,9 +208,10 @@ the table is of what to go and fix.
 Four things earned their time:
 
 **Confidence intervals on everything.** My golden set cannot resolve effects smaller than
-about 0.12. I computed that before running the ablation, and it retired several
-"improvements" that were noise with an ordering printed on them. Paired bootstrap over
-per-question scores, not two independent means.
+about 0.12. I only worked that out after my first ablation had ranked 18 configurations on
+gaps smaller than it, and it retired several "improvements" that were noise with an
+ordering printed on them. Paired bootstrap over per-question scores, not two
+independent means.
 
 **A ceiling check.** Before trusting a recall number I verified that every gold span is
 reachable at all: retrievability 1.0000. Without it, a low score is ambiguous between bad
