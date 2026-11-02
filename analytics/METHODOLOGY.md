@@ -54,9 +54,9 @@ effects are large and real.
 What is wrong is the comparison group. CFPB's product taxonomy has four values, and
 "Debt collection" contains national banks, debt buyers, and credit bureaus: businesses
 whose *role* in a complaint differs so fundamentally that a common relief rate is not a
-meaningful expectation. TransUnion's relief rate under Debt collection is 0.71 against a
-0.18 baseline; that is a statement about what a credit bureau does when a consumer disputes
-a record, not evidence about its conduct.
+meaningful expectation. A credit bureau's relief rate under Debt collection can be 0.71
+against a 0.18 baseline; that is a statement about what a credit bureau does when a consumer
+disputes a record, not evidence about its conduct.
 
 The same screen on the **timely-response rate** flags **6 of 80, 8%**, with
 Benjamini-Hochberg removing 13 of 19 raw hits. Timeliness is a procedural obligation that

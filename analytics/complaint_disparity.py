@@ -14,8 +14,8 @@ two-proportion z-test, with Benjamini-Hochberg applied across the whole family o
 
 Three design decisions carry the statistics:
 
-**The baseline excludes the cell being tested.** Comparing Capital One's credit-card relief
-rate against a product baseline that includes Capital One's own complaints tests a cell
+**The baseline excludes the cell being tested.** Comparing one issuer's credit-card relief
+rate against a product baseline that includes that issuer's own complaints tests a cell
 against a number it helped produce. With a large issuer that is a substantial share of the
 baseline, and it biases every test toward finding nothing. Each cell is therefore compared
 against the same product at every *other* company.
