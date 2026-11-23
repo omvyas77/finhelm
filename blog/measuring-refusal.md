@@ -1,6 +1,6 @@
 # The number that matters is what your RAG system does when retrieval fails
 
-Most RAG write-ups report a retrieval score and stop. Mine is 0.7377, recall@16 over 202
+Most RAG write-ups report a retrieval score and stop. Mine is 0.7377, recall@16 over the 183 answerable
 questions, macro-averaged, 95% interval [0.683, 0.792]. It is the least interesting number
 in the project.
 
